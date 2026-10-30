@@ -31,6 +31,13 @@ type AnalysisResult = {
   bug_findings: Array<{ id: string; path: string; line: number; rule_id: string; title: string; severity: "high" | "medium" | "low"; message: string; recommendation: string }>;
   bug_stats: { total: number; by_severity: { high: number; medium: number; low: number }; files_scanned: number; truncated: boolean };
   bug_analysis_note: string;
+  architecture_insights: {
+    entry_points: Array<{ path: string; reason: string }>;
+    circular_dependencies: string[][];
+    module_groups: Array<{ name: string; files: number }>;
+    architecture_stats: { entry_points: number; circular_dependency_groups: number; top_level_modules: number };
+    architecture_note: string;
+  };
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -506,6 +513,37 @@ function Explorer() {
                   <Metric label="Unresolved" value={result.stats.relative_imports_unresolved} />
                   <Metric label="Not fetched" value={result.stats.files_not_fetched} />
                 </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-indigo-300" /> Architecture intelligence</div>
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  <Metric label="Entry points" value={result.architecture_insights.architecture_stats.entry_points} />
+                  <Metric label="Cycles" value={result.architecture_insights.architecture_stats.circular_dependency_groups} />
+                  <Metric label="Modules" value={result.architecture_insights.architecture_stats.top_level_modules} />
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Entry-point candidates</div>
+                    {result.architecture_insights.entry_points.length ? result.architecture_insights.entry_points.map((item) => (
+                      <button key={item.path} onClick={() => { void openSource(item.path); }} className="mb-1 block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-xs text-indigo-200 hover:bg-white/5">{item.path}</button>
+                    )) : <p className="text-xs text-slate-500">No recognized entry-point filenames found.</p>}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Circular dependencies</div>
+                    {result.architecture_insights.circular_dependencies.length ? result.architecture_insights.circular_dependencies.map((cycle, index) => (
+                      <div key={index} className="mb-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-2 text-[11px] leading-5 text-amber-200">{cycle.join(" ↔ ")}</div>
+                    )) : <p className="text-xs text-emerald-300">No circular imports detected.</p>}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Top-level modules</div>
+                    <div className="space-y-1">
+                      {result.architecture_insights.module_groups.slice(0, 8).map((group) => (
+                        <div key={group.name} className="flex items-center justify-between rounded-lg bg-black/20 px-3 py-2 text-xs"><span className="truncate text-slate-300">{group.name}</span><span className="ml-3 tabular-nums text-slate-500">{group.files} files</span></div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.architecture_insights.architecture_note}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center justify-between gap-2">
