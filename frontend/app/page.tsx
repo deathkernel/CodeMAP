@@ -31,6 +31,12 @@ type AnalysisResult = {
   bug_findings: Array<{ id: string; path: string; line: number; rule_id: string; title: string; severity: "high" | "medium" | "low"; message: string; recommendation: string }>;
   bug_stats: { total: number; by_severity: { high: number; medium: number; low: number }; files_scanned: number; truncated: boolean };
   bug_analysis_note: string;
+  code_intelligence: {
+    bottleneck_files: Array<{ path: string; fan_in: number; fan_out: number; connections: number }>;
+    unreferenced_files: Array<{ path: string; reason: string }>;
+    dependency_depth: { max_depth: number; reachable_files: number; unreachable_files: number; deepest_files: string[] };
+    code_intelligence_note: string;
+  };
   architecture_insights: {
     entry_points: Array<{ path: string; reason: string }>;
     circular_dependencies: string[][];
@@ -595,6 +601,37 @@ function Explorer() {
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.architecture_insights.architecture_note}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+                <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-cyan-300" /> Code intelligence pro</div>
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  <Metric label="Max depth" value={result.code_intelligence.dependency_depth.max_depth} />
+                  <Metric label="Reachable" value={result.code_intelligence.dependency_depth.reachable_files} />
+                  <Metric label="Unreachable" value={result.code_intelligence.dependency_depth.unreachable_files} />
+                </div>
+                <div className="mb-4">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Bottleneck candidates</div>
+                  {result.code_intelligence.bottleneck_files.length ? result.code_intelligence.bottleneck_files.map((item) => (
+                    <button key={item.path} onClick={() => { void openSource(item.path); }} className="mb-2 block w-full rounded-lg bg-black/20 px-3 py-2 text-left hover:bg-white/5">
+                      <span className="block truncate text-xs text-cyan-200">{item.path}</span>
+                      <span className="mt-1 block text-[10px] text-slate-500">Used by {item.fan_in} files · imports {item.fan_out} files</span>
+                    </button>
+                  )) : <p className="text-xs text-slate-500">No high-connectivity bottlenecks detected.</p>}
+                </div>
+                <div className="mb-3">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Unreferenced in analyzed graph</div>
+                  {result.code_intelligence.unreferenced_files.length ? result.code_intelligence.unreferenced_files.slice(0, 8).map((item) => (
+                    <button key={item.path} onClick={() => { void openSource(item.path); }} className="mb-1 block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-xs text-amber-200 hover:bg-white/5">{item.path}</button>
+                  )) : <p className="text-xs text-emerald-300">Every analyzed file has an incoming import.</p>}
+                </div>
+                {result.code_intelligence.dependency_depth.deepest_files.length > 0 && (
+                  <div className="mb-3"><div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Deepest dependency files</div>
+                    {result.code_intelligence.dependency_depth.deepest_files.slice(0, 5).map((path) => (
+                      <button key={path} onClick={() => { void openSource(path); }} className="mb-1 block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-xs text-indigo-200 hover:bg-white/5">{path}</button>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] leading-4 text-slate-600">{result.code_intelligence.code_intelligence_note}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center justify-between gap-2">
