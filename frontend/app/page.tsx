@@ -168,6 +168,10 @@ function Explorer() {
   const [highlightDependencies, setHighlightDependencies] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
+  const [codeSearchQuery, setCodeSearchQuery] = useState("");
+  const [codeSearchMode, setCodeSearchMode] = useState<"all" | "functions" | "classes" | "imports">("all");
+  const [codeSearchLanguage, setCodeSearchLanguage] = useState("all");
+  const [sourceLine, setSourceLine] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<{ path: string; content: string; truncated: boolean } | null>(null);
@@ -201,6 +205,36 @@ function Explorer() {
   }, []);
 
   const fileTree = useMemo(() => buildFileTree(result?.nodes || []), [result]);
+  const codeSearchResults = useMemo(() => {
+    const term = codeSearchQuery.trim().toLowerCase();
+    if (!term || !Object.keys(localSources).length) return [];
+    const matches: Array<{ path: string; line: number; text: string; kind: string }> = [];
+    const nodeByPath = new Map((result?.nodes || []).map((node) => [node.path, node]));
+    const patterns = {
+      functions: /^\s*(?:(?:export|default|public|private|protected|static|async)\s+)*(?:function\s+|def\s+|fn\s+|(?:const|let|var)\s+)[\w$]+\s*(?:=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>)?/,
+      classes: /^\s*(?:(?:export|default|public|private|abstract)\s+)*class\s+[\w$]+/,
+      imports: /^\s*(?:import\s|from\s+.+\s+import\s|const\s+.+\s*=\s*require\s*\(|(?:const|let|var)\s+.+\s*=\s*await\s+import\s*\()/,
+    };
+    Object.entries(localSources).forEach(([path, content]) => {
+      const node = nodeByPath.get(path);
+      if (codeSearchLanguage !== "all" && node?.language !== codeSearchLanguage) return;
+      content.split(/\r?\n/).forEach((line, index) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const kind = codeSearchMode === "all" ? "code"
+          : codeSearchMode === "functions" ? "function"
+          : codeSearchMode === "classes" ? "class" : "import";
+        if (codeSearchMode !== "all" && !patterns[codeSearchMode].test(line)) return;
+        if (!trimmed.toLowerCase().includes(term)) return;
+        matches.push({ path, line: index + 1, text: trimmed.slice(0, 220), kind });
+      });
+    });
+    return matches.slice(0, 150);
+  }, [codeSearchQuery, codeSearchMode, codeSearchLanguage, localSources, result]);
+  const codeSearchLanguages = useMemo(
+    () => [...new Set((result?.nodes || []).map((node) => node.language).filter(Boolean))].sort(),
+    [result],
+  );
   const graphMetrics = useMemo(() => {
     const degree = new Map<string, number>();
     const adjacency = new Map<string, string[]>();
@@ -345,8 +379,9 @@ function Explorer() {
     return { affected, affectedModules, radius };
   }, [dependencyDrilldown]);
 
-  async function openSource(path: string) {
+  async function openSource(path: string, line?: number) {
     if (!result) return;
+    setSourceLine(line ?? null);
     setSelected(path);
     setSourceLoading(true);
     setSource(null);
@@ -964,6 +999,34 @@ function Explorer() {
                 ) : <p className="text-xs leading-5 text-slate-400">No supported risky patterns found in the scanned files.</p>}
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.bug_analysis_note}</p>
               </div>
+              <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/[0.035] p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><Search size={15} className="text-indigo-300" /> Code search</div>
+                  <span className="text-[10px] text-slate-500">{codeSearchResults.length} matches</span>
+                </div>
+                <input value={codeSearchQuery} onChange={(event) => setCodeSearchQuery(event.target.value)} placeholder="Search code, function, class, import…" className="mb-2 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-xs outline-none focus:border-indigo-400/40" />
+                <div className="mb-2 grid grid-cols-2 gap-2">
+                  <select value={codeSearchMode} onChange={(event) => setCodeSearchMode(event.target.value as typeof codeSearchMode)} className="h-8 min-w-0 rounded-lg border border-white/10 bg-slate-950 px-2 text-[10px] text-slate-300">
+                    <option value="all">All code lines</option><option value="functions">Functions</option><option value="classes">Classes</option><option value="imports">Imports</option>
+                  </select>
+                  <select value={codeSearchLanguage} onChange={(event) => setCodeSearchLanguage(event.target.value)} className="h-8 min-w-0 rounded-lg border border-white/10 bg-slate-950 px-2 text-[10px] text-slate-300">
+                    <option value="all">All languages</option>{codeSearchLanguages.map((language) => <option key={language} value={language}>{language}</option>)}
+                  </select>
+                </div>
+                {Object.keys(localSources).length ? (
+                  <div className="max-h-64 space-y-1 overflow-auto">
+                    {!codeSearchQuery.trim() ? <p className="py-2 text-xs text-slate-500">Enter a search term to scan the selected folder.</p>
+                      : codeSearchResults.length ? codeSearchResults.map((match) => (
+                        <button key={`${match.path}:${match.line}`} onClick={() => { void openSource(match.path, match.line); }} className="block w-full rounded-lg bg-black/20 px-3 py-2 text-left hover:bg-white/5">
+                          <span className="block truncate text-[10px] font-medium text-indigo-200">{match.path}:{match.line}</span>
+                          <span className="mt-1 block truncate font-mono text-[10px] text-slate-400">{match.text}</span>
+                          <span className="mt-1 block text-[9px] uppercase tracking-wider text-slate-600">{match.kind}</span>
+                        </button>
+                      )) : <p className="py-2 text-xs text-slate-500">No matching lines found.</p>}
+                    {codeSearchResults.length === 150 && <p className="pt-1 text-[9px] text-slate-600">Showing first 150 matches.</p>}
+                  </div>
+                ) : <p className="text-[10px] leading-4 text-slate-500">Code-content search is available after selecting a local project folder. GitHub URL analysis currently supports file/path search.</p>}
+              </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm font-semibold"><FolderOpen size={15} /> File explorer</div>
@@ -984,7 +1047,11 @@ function Explorer() {
                 {sourceLoading && <p className="mt-3 text-xs text-slate-400">Loading source…</p>}
                 {source && <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
                   <div className="border-b border-white/10 px-3 py-2 text-[10px] text-slate-500">{source.path}{source.truncated ? " · preview truncated" : ""}</div>
-                  <pre className="max-h-72 overflow-auto p-3 text-[11px] leading-5 text-slate-300"><code>{source.content}</code></pre>
+                  <pre className="max-h-72 overflow-auto p-3 text-[11px] leading-5 text-slate-300"><code>{source.content.split("\n").map((line, index) => (
+                    <span key={index} className={sourceLine === index + 1 ? "block rounded bg-amber-400/15 text-amber-100" : "block"}>
+                      <span className="mr-4 inline-block w-8 select-none text-right text-slate-600">{index + 1}</span>{line || " "}
+                    </span>
+                  ))}</code></pre>
                 </div>}
                 {aiLoading && <p className="mt-3 text-xs text-indigo-300">{aiStatus || "Preparing local AI…"}</p>}
                 {!aiLoading && aiStatus && <p className="mt-3 text-xs text-emerald-300">{aiStatus}</p>}
