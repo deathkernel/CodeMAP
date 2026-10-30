@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/ai", tags=["local-ai"])
 
-DEFAULT_MODEL = "qwen2.5-coder:3b"
+DEFAULT_MODEL = "hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Qwen3.5-9B-Q6_K.gguf"
 
 
 class ExplainRequest(BaseModel):
@@ -100,7 +100,7 @@ async def explain_code(request: ExplainRequest):
     try:
         downloaded = await _ensure_model(base_url, model)
         async with httpx.AsyncClient(
-            timeout=float(os.getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "180")),
+            timeout=float(os.getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "240")),
             trust_env=False,
         ) as client:
             response = await client.post(
