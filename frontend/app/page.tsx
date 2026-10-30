@@ -204,6 +204,11 @@ function Explorer() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    if (!source || !sourceLine) return;
+    document.getElementById(`source-line-${sourceLine}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [source, sourceLine]);
+
   const fileTree = useMemo(() => buildFileTree(result?.nodes || []), [result]);
   const codeSearchResults = useMemo(() => {
     const term = codeSearchQuery.trim().toLowerCase();
@@ -1048,7 +1053,7 @@ function Explorer() {
                 {source && <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
                   <div className="border-b border-white/10 px-3 py-2 text-[10px] text-slate-500">{source.path}{source.truncated ? " · preview truncated" : ""}</div>
                   <pre className="max-h-72 overflow-auto p-3 text-[11px] leading-5 text-slate-300"><code>{source.content.split("\n").map((line, index) => (
-                    <span key={index} className={sourceLine === index + 1 ? "block rounded bg-amber-400/15 text-amber-100" : "block"}>
+                    <span id={`source-line-${index + 1}`} key={index} className={sourceLine === index + 1 ? "block rounded bg-amber-400/15 text-amber-100" : "block"}>
                       <span className="mr-4 inline-block w-8 select-none text-right text-slate-600">{index + 1}</span>{line || " "}
                     </span>
                   ))}</code></pre>
