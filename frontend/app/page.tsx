@@ -11,7 +11,8 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
-  ArrowRight, Boxes, Bug, FileCode2, FolderOpen, Github, LoaderCircle,
+  ArrowRight, Boxes, Bug, ChevronDown, ChevronRight, Code2, FileCode2,
+  FileJson, FileText, Folder, FolderOpen, Github, LoaderCircle,
   Network, Search, ShieldCheck, Sparkles, Workflow,
 } from "lucide-react";
 
@@ -48,11 +49,77 @@ function toMermaid(result: AnalysisResult) {
   return lines.join("\n");
 }
 
+type FileTreeItem = { name: string; path: string; isFolder: boolean; children: FileTreeItem[] };
+
+function buildFileTree(nodes: AnalysisResult["nodes"]): FileTreeItem[] {
+  const root: FileTreeItem = { name: "", path: "", isFolder: true, children: [] };
+  for (const file of nodes) {
+    const parts = file.path.split("/").filter(Boolean);
+    let current = root;
+    let currentPath = "";
+    parts.forEach((part, index) => {
+      currentPath = currentPath ? currentPath + "/" + part : part;
+      const isFolder = index < parts.length - 1;
+      let item = current.children.find((child) => child.name === part);
+      if (!item) {
+        item = { name: part, path: currentPath, isFolder, children: [] };
+        current.children.push(item);
+      }
+      current = item;
+    });
+  }
+  const sortItems = (items: FileTreeItem[]) => {
+    items.sort((a, b) => a.isFolder !== b.isFolder ? (a.isFolder ? -1 : 1) : a.name.localeCompare(b.name));
+    items.forEach((item) => sortItems(item.children));
+  };
+  sortItems(root.children);
+  return root.children;
+}
+
+function getFileIcon(path: string) {
+  const extension = path.split(".").pop()?.toLowerCase();
+  if (["json", "jsonc"].includes(extension || "")) return FileJson;
+  if (["md", "txt", "mdx"].includes(extension || "")) return FileText;
+  if (["py", "js", "jsx", "ts", "tsx", "java", "go", "rs", "cpp", "c", "cs"].includes(extension || "")) return Code2;
+  return FileCode2;
+}
+
+function getGraphPositions(result: AnalysisResult) {
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, number>();
+  result.nodes.forEach((node) => { outgoing.set(node.id, []); incoming.set(node.id, 0); });
+  result.edges.forEach((edge) => {
+    outgoing.get(edge.source)?.push(edge.target);
+    incoming.set(edge.target, (incoming.get(edge.target) || 0) + 1);
+  });
+  const levels = new Map<string, number>();
+  const queue = result.nodes.filter((node) => (incoming.get(node.id) || 0) === 0).map((node) => node.id);
+  queue.forEach((id) => levels.set(id, 0));
+  while (queue.length) {
+    const current = queue.shift()!;
+    const nextLevel = (levels.get(current) || 0) + 1;
+    for (const target of outgoing.get(current) || []) {
+      if (!levels.has(target)) { levels.set(target, nextLevel); queue.push(target); }
+    }
+  }
+  result.nodes.forEach((node, index) => { if (!levels.has(node.id)) levels.set(node.id, index % 3); });
+  const rows = new Map<number, number>();
+  const positions = new Map<string, { x: number; y: number }>();
+  result.nodes.forEach((node) => {
+    const level = levels.get(node.id) || 0;
+    const row = rows.get(level) || 0;
+    rows.set(level, row + 1);
+    positions.set(node.id, { x: row * 280, y: level * 210 });
+  });
+  return positions;
+}
+
 function Explorer() {
   const [url, setUrl] = useState("");
   const [localSources, setLocalSources] = useState<Record<string, string>>({});
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -86,15 +153,17 @@ function Explorer() {
     return () => { active = false; };
   }, []);
 
+  const fileTree = useMemo(() => buildFileTree(result?.nodes || []), [result]);
   const visibleNodes = useMemo(
     () => result?.nodes.filter((node) => node.path.toLowerCase().includes(query.toLowerCase())) ?? [],
     [result, query],
   );
   const graphNodes: Node[] = useMemo(() => {
     if (!result) return [];
-    const nodes = result.nodes.map((node, index) => ({
+    const positions = getGraphPositions(result);
+    const nodes = result.nodes.map((node) => ({
       id: node.id,
-      position: { x: (index % 4) * 260, y: Math.floor(index / 4) * 150 },
+      position: positions.get(node.id) || { x: 0, y: 0 },
       data: { label: (
         <div className="min-w-40 rounded-xl border border-indigo-400/30 bg-[#111a2b] px-4 py-3 shadow-xl">
           <div className="flex items-center gap-2 text-indigo-300"><FileCode2 size={15} /><span className="text-xs uppercase">{node.language}</span></div>
@@ -261,6 +330,7 @@ function Explorer() {
       if (!response.ok) throw new Error(payload.detail || "Analysis failed. Check the API server.");
       setLocalSources({});
       setResult(payload);
+      setExpandedFolders({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not connect to CodeMap API.");
     } finally {
@@ -314,6 +384,7 @@ function Explorer() {
       if (!response.ok) throw new Error(payload.detail || "Folder analysis failed.");
       setLocalSources(sources);
       setResult(payload);
+      setExpandedFolders({});
       setSelected(null);
       setSource(null);
     } catch (err) {
@@ -332,6 +403,40 @@ function Explorer() {
     anchor.download = "codemap-architecture.mmd";
     anchor.click();
     URL.revokeObjectURL(href);
+  }
+
+  function renderTree(items: FileTreeItem[], depth = 0): React.ReactNode {
+    return items.map((item) => {
+      const matches = !query || item.path.toLowerCase().includes(query.toLowerCase());
+      const matchingChildren = item.children.filter((child) => !query || child.path.toLowerCase().includes(query.toLowerCase()));
+      if (!matches && matchingChildren.length === 0) return null;
+      if (item.isFolder) {
+        const isExpanded = query ? true : Boolean(expandedFolders[item.path]);
+        const FolderIcon = isExpanded ? FolderOpen : Folder;
+        return (
+          <div key={item.path}>
+            <button onClick={() => setExpandedFolders((current) => ({ ...current, [item.path]: !current[item.path] }))}
+              className="flex w-full items-center gap-2 rounded-lg py-2 pr-2 text-left text-xs text-slate-300 hover:bg-white/5"
+              style={{ paddingLeft: 8 + depth * 14 }}>
+              {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              <FolderIcon size={14} className="text-amber-300" />
+              <span className="truncate">{item.name}</span>
+              <span className="ml-auto text-[10px] text-slate-600">{item.children.length}</span>
+            </button>
+            {isExpanded && <div>{renderTree(item.children, depth + 1)}</div>}
+          </div>
+        );
+      }
+      const Icon = getFileIcon(item.path);
+      return (
+        <button key={item.path} onClick={() => { void openSource(item.path); }}
+          className={`flex w-full items-center gap-2 rounded-lg py-2 pr-2 text-left text-xs transition ${selected === item.path ? "bg-indigo-500/20 text-indigo-200" : "text-slate-400 hover:bg-white/5"}`}
+          style={{ paddingLeft: 28 + depth * 14 }} title={item.path}>
+          <Icon size={14} className="shrink-0 text-indigo-300" />
+          <span className="truncate">{item.name}</span>
+        </button>
+      );
+    });
   }
 
   const selectedNode = result?.nodes.find((node) => node.id === selected);
@@ -440,10 +545,16 @@ function Explorer() {
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.bug_analysis_note}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Search size={15} /> File explorer</div>
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter files..." className="mb-3 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-xs outline-none" />
-                <div className="max-h-64 space-y-1 overflow-auto">
-                  {visibleNodes.map((node) => <button key={node.id} onClick={() => { void openSource(node.id); }} className={`block w-full truncate rounded-lg px-3 py-2 text-left text-xs ${selected === node.id ? "bg-indigo-500/20 text-indigo-200" : "text-slate-400 hover:bg-white/5"}`}>{node.path}</button>)}
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><FolderOpen size={15} /> File explorer</div>
+                  <span className="text-[10px] text-slate-500">{result.nodes.length} files</span>
+                </div>
+                <div className="relative mb-3">
+                  <Search size={13} className="absolute left-3 top-3 text-slate-500" />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files and folders..." className="h-9 w-full rounded-lg border border-white/10 bg-black/20 pl-9 pr-3 text-xs outline-none focus:border-indigo-400/40" />
+                </div>
+                <div className="max-h-[420px] overflow-auto">
+                  {fileTree.length ? renderTree(fileTree) : <p className="p-3 text-xs text-slate-500">No files to display.</p>}
                 </div>
               </div>
               {selectedNode && <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/5 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><FileCode2 size={15} /> Selected file</div><div className="break-all text-xs text-indigo-200">{selectedNode.path}</div><div className="mt-2 text-xs text-slate-400">{selectedNode.language} · {selectedNode.lines} lines</div><div className="mt-3 flex gap-2">
