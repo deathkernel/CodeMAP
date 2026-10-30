@@ -142,6 +142,7 @@ function Explorer() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [showDisconnected, setShowDisconnected] = useState(false);
+  const [activeFolder, setActiveFolder] = useState("all");
   const [highlightDependencies, setHighlightDependencies] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
@@ -240,6 +241,29 @@ function Explorer() {
       };
     }) ?? [],
     [result, graphMetrics, selected, highlightDependencies],
+  );
+
+  const folderOptions = useMemo(
+    () => [...new Set(result?.nodes.map((node) => getFolderGroup(node.path)) || [])].sort(),
+    [result],
+  );
+  const visibleGraphNodes = useMemo(() => {
+    const folderNodes = activeFolder === "all"
+      ? graphNodes
+      : graphNodes.filter((node) => getFolderGroup(node.id) === activeFolder);
+    return showDisconnected
+      ? folderNodes.filter((node) => graphMetrics.disconnected.includes(node.id))
+      : folderNodes;
+  }, [graphNodes, activeFolder, showDisconnected, graphMetrics.disconnected]);
+  const visibleNodeIds = useMemo(
+    () => new Set(visibleGraphNodes.map((node) => node.id)),
+    [visibleGraphNodes],
+  );
+  const visibleGraphEdges = useMemo(
+    () => showDisconnected ? [] : graphEdges.filter(
+      (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target),
+    ),
+    [graphEdges, visibleNodeIds, showDisconnected],
   );
 
   async function openSource(path: string) {
@@ -541,12 +565,20 @@ function Explorer() {
                 <div><div className="font-semibold">{result.repository}</div><div className="mt-1 text-xs text-slate-500">Branch: {result.default_branch}</div></div>
                 <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export Mermaid</button>
               </div>
-              <div className="flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3 text-[10px] text-slate-400">
-                <span className="font-semibold uppercase tracking-wider text-slate-500">Folder clusters</span>
-                {[...new Set(result.nodes.map((node) => getFolderGroup(node.path)))].sort().map((folder) => (
-                  <span key={folder} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{folder}</span>
-                ))}
-                <span className="ml-auto text-slate-500">Arrow direction = importer to imported file</span>
+              <div className="border-b border-white/10 px-4 py-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold uppercase tracking-wider text-[10px] text-slate-500">Folder navigation</span>
+                  <span className="text-[10px] text-slate-500">{visibleGraphNodes.length} of {result.nodes.length} files · {visibleGraphEdges.length} connections</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => { setActiveFolder("all"); setShowDisconnected(false); }}
+                    className={"rounded-full border px-3 py-1.5 text-[10px] " + (activeFolder === "all" ? "border-indigo-400/40 bg-indigo-500/15 text-indigo-200" : "border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/10")}>All folders</button>
+                  {folderOptions.map((folder) => (
+                    <button key={folder} onClick={() => { setActiveFolder(folder); setShowDisconnected(false); }}
+                      className={"rounded-full border px-3 py-1.5 text-[10px] " + (activeFolder === folder ? "border-indigo-400/40 bg-indigo-500/15 text-indigo-200" : "border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/10")}>{folder}</button>
+                  ))}
+                </div>
+                <div className="mt-2 text-[10px] text-slate-500">Arrow direction = importer to imported file</div>
               </div>
               <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3">
                 <span className="mr-auto text-[11px] text-slate-500">{graphMetrics.disconnected.length} disconnected · {graphMetrics.important.length} core candidates</span>
@@ -554,7 +586,7 @@ function Explorer() {
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
               <div className="h-[620px]">
-                <ReactFlow nodes={showDisconnected ? graphNodes.filter((node) => graphMetrics.disconnected.includes(node.id)) : graphNodes} edges={showDisconnected ? [] : graphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
