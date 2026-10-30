@@ -96,32 +96,36 @@ function getFileIcon(path: string) {
   return FileCode2;
 }
 
+function getFolderGroup(path: string) {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length > 1 ? parts[0] : "(root)";
+}
+
+function getLanguageStyle(language: string) {
+  const styles: Record<string, { border: string; background: string; text: string }> = {
+    py: { border: "#3b82f6", background: "#102039", text: "#93c5fd" },
+    ts: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
+    tsx: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
+    js: { border: "#eab308", background: "#29230e", text: "#fde047" },
+    jsx: { border: "#eab308", background: "#29230e", text: "#fde047" },
+    json: { border: "#a78bfa", background: "#211a35", text: "#c4b5fd" },
+    css: { border: "#ec4899", background: "#301629", text: "#f9a8d4" },
+    html: { border: "#f97316", background: "#301d12", text: "#fdba74" },
+  };
+  return styles[language.toLowerCase()] || { border: "#64748b", background: "#172033", text: "#cbd5e1" };
+}
+
 function getGraphPositions(result: AnalysisResult) {
-  const outgoing = new Map<string, string[]>();
-  const incoming = new Map<string, number>();
-  result.nodes.forEach((node) => { outgoing.set(node.id, []); incoming.set(node.id, 0); });
-  result.edges.forEach((edge) => {
-    outgoing.get(edge.source)?.push(edge.target);
-    incoming.set(edge.target, (incoming.get(edge.target) || 0) + 1);
-  });
-  const levels = new Map<string, number>();
-  const queue = result.nodes.filter((node) => (incoming.get(node.id) || 0) === 0).map((node) => node.id);
-  queue.forEach((id) => levels.set(id, 0));
-  while (queue.length) {
-    const current = queue.shift()!;
-    const nextLevel = (levels.get(current) || 0) + 1;
-    for (const target of outgoing.get(current) || []) {
-      if (!levels.has(target)) { levels.set(target, nextLevel); queue.push(target); }
-    }
-  }
-  result.nodes.forEach((node, index) => { if (!levels.has(node.id)) levels.set(node.id, index % 3); });
-  const rows = new Map<number, number>();
+  const folders = [...new Set(result.nodes.map((node) => getFolderGroup(node.path)))].sort();
   const positions = new Map<string, { x: number; y: number }>();
-  result.nodes.forEach((node) => {
-    const level = levels.get(node.id) || 0;
-    const row = rows.get(level) || 0;
-    rows.set(level, row + 1);
-    positions.set(node.id, { x: row * 280, y: level * 210 });
+  folders.forEach((folder, folderIndex) => {
+    const files = result.nodes.filter((node) => getFolderGroup(node.path) === folder);
+    files.forEach((node, index) => {
+      positions.set(node.id, {
+        x: folderIndex * 520 + (index % 2) * 230,
+        y: Math.floor(index / 2) * 190,
+      });
+    });
   });
   return positions;
 }
@@ -201,13 +205,14 @@ function Explorer() {
       const disconnected = degree === 0;
       const isImportant = graphMetrics.important.includes(node.id);
       const inPath = !selected || !highlightDependencies || graphMetrics.reachable.has(node.id);
-      const borderClass = selected === node.id ? "border-indigo-300 bg-indigo-500/20" : disconnected ? "border-amber-400/30 bg-[#171827]" : isImportant ? "border-emerald-400/30 bg-[#10231f]" : "border-indigo-400/30 bg-[#111a2b]";
+      const languageStyle = getLanguageStyle(node.language);
+      const borderColor = selected === node.id ? "#a5b4fc" : disconnected ? "#fbbf24" : isImportant ? "#34d399" : languageStyle.border;
       return {
         id: node.id,
         position: positions.get(node.id) || { x: 0, y: 0 },
         data: { label: (
-          <div className={"min-w-40 rounded-xl border px-4 py-3 shadow-xl " + borderClass}>
-            <div className="flex items-center gap-2 text-indigo-300"><FileCode2 size={15} /><span className="text-xs uppercase">{node.language}</span>{isImportant && <span className="ml-auto text-[9px] text-emerald-300">CORE</span>}</div>
+          <div className="min-w-40 rounded-xl border px-4 py-3 shadow-xl" style={{ borderColor, background: languageStyle.background }}>
+            <div className="flex items-center gap-2" style={{ color: languageStyle.text }}><FileCode2 size={15} /><span className="text-xs uppercase">{node.language}</span>{isImportant && <span className="ml-auto text-[9px] text-emerald-300">CORE</span>}</div>
             <div className="mt-2 max-w-48 truncate text-sm font-semibold text-slate-100">{node.label}</div>
             <div className="mt-1 max-w-48 truncate text-[10px] text-slate-400">{node.path}</div>
             <div className="mt-2 flex justify-between text-[10px] text-slate-500"><span>{node.lines} lines</span><span>{degree} links</span></div>
@@ -218,7 +223,6 @@ function Explorer() {
       };
     });
   }, [result, graphMetrics, selected, highlightDependencies]);
-
   const graphEdges: Edge[] = useMemo(
     () => result?.edges.map((edge) => {
       const active = !selected || !highlightDependencies || (graphMetrics.reachable.has(edge.source) && graphMetrics.reachable.has(edge.target));
@@ -226,6 +230,7 @@ function Explorer() {
         id: edge.id, source: edge.source, target: edge.target, label: "imports", animated: active,
         style: { stroke: active ? "#818cf8" : "#334155", strokeWidth: active ? 1.8 : 1, opacity: active ? 1 : 0.15 },
         labelStyle: { fill: "#a5b4fc", fontSize: 10 },
+        markerEnd: { type: "arrowclosed", color: active ? "#818cf8" : "#334155", width: 16, height: 16 },
       };
     }) ?? [],
     [result, graphMetrics, selected, highlightDependencies],
@@ -529,6 +534,13 @@ function Explorer() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
                 <div><div className="font-semibold">{result.repository}</div><div className="mt-1 text-xs text-slate-500">Branch: {result.default_branch}</div></div>
                 <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export Mermaid</button>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3 text-[10px] text-slate-400">
+                <span className="font-semibold uppercase tracking-wider text-slate-500">Folder clusters</span>
+                {[...new Set(result.nodes.map((node) => getFolderGroup(node.path)))].sort().map((folder) => (
+                  <span key={folder} className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{folder}</span>
+                ))}
+                <span className="ml-auto text-slate-500">Arrow direction = importer to imported file</span>
               </div>
               <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3">
                 <span className="mr-auto text-[11px] text-slate-500">{graphMetrics.disconnected.length} disconnected · {graphMetrics.important.length} core candidates</span>
