@@ -321,3 +321,129 @@ def architecture_health(
         "health_note": "Heuristic indicators based on analyzed lines, locally resolved imports, detected cycles, and static findings. Complexity is not cyclomatic complexity; the score is not a guarantee of code quality or runtime correctness.",
     }
 }
+
+
+def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dict[str, Any]:
+    """Extract static Python/JS/TS symbol declarations and unambiguous local call links."""
+    declarations: list[dict[str, Any]] = []
+    raw_calls: list[dict[str, Any]] = []
+    js_declaration = re.compile(
+        r"^\\s*(?:(?:export|default|async|public|private|protected|static)\\s+)*"
+        r"(function|class)\\s+([A-Za-z_$][\\w$]*)"
+    )
+    js_variable = re.compile(
+        r"^\\s*(?:(?:export|default|async)\\s+)*(?:const|let|var)\\s+"
+        r"([A-Za-z_$][\\w$]*)\\s*=\\s*(?:async\\s*)?(?:function\\b|(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>)"
+    )
+    call_pattern = re.compile(r"\\b([A-Za-z_$][\\w$]*)\\s*\\(")
+
+    for path, source in sorted(sources.items()):
+        suffix = PurePosixPath(path).suffix.lower()
+        if suffix == ".py":
+            try:
+                tree = ast.parse(source)
+            except (SyntaxError, ValueError):
+                continue
+
+            class Visitor(ast.NodeVisitor):
+                def __init__(self) -> None:
+                    self.scope: list[tuple[str, int, int]] = []
+
+                def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+                    qualified = ".".join([name for name, _, _ in self.scope] + [node.name])
+                    declarations.append({
+                        "id": f"{path}:{node.lineno}:{qualified}", "path": path,
+                        "name": node.name, "qualified_name": qualified, "kind": "function",
+                        "line": node.lineno, "end_line": getattr(node, "end_lineno", node.lineno),
+                    })
+                    self.scope.append((node.name, node.lineno, getattr(node, "end_lineno", node.lineno)))
+                    for child in node.body:
+                        self.visit(child)
+                    self.scope.pop()
+
+                visit_AsyncFunctionDef = visit_FunctionDef
+
+                def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                    qualified = ".".join([name for name, _, _ in self.scope] + [node.name])
+                    declarations.append({
+                        "id": f"{path}:{node.lineno}:{qualified}", "path": path,
+                        "name": node.name, "qualified_name": qualified, "kind": "class",
+                        "line": node.lineno, "end_line": getattr(node, "end_lineno", node.lineno),
+                    })
+                    self.scope.append((node.name, node.lineno, getattr(node, "end_lineno", node.lineno)))
+                    for child in node.body:
+                        self.visit(child)
+                    self.scope.pop()
+
+                def visit_Call(self, node: ast.Call) -> None:
+                    if isinstance(node.func, ast.Name):
+                        name = node.func.id
+                    elif isinstance(node.func, ast.Attribute):
+                        name = node.func.attr
+                    else:
+                        name = ""
+                    if name:
+                        raw_calls.append({
+                            "path": path, "name": name, "line": node.lineno,
+                            "caller": self.scope[-1][0] if self.scope else "(module)",
+                        })
+                    self.generic_visit(node)
+
+            Visitor().visit(tree)
+        elif suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
+            lines = source.splitlines()
+            found: list[dict[str, Any]] = []
+            for index, line in enumerate(lines, 1):
+                match = js_declaration.match(line)
+                if match:
+                    kind, name = match.groups()
+                else:
+                    variable = js_variable.match(line)
+                    if not variable:
+                        continue
+                    kind, name = "function", variable.group(1)
+                found.append({
+                    "id": f"{path}:{index}:{name}", "path": path, "name": name,
+                    "qualified_name": name, "kind": kind.lower(),
+                    "line": index, "end_line": len(lines),
+                })
+            for position, item in enumerate(found):
+                item["end_line"] = found[position + 1]["line"] - 1 if position + 1 < len(found) else len(lines)
+            declarations.extend(found)
+            ranges = [(item["line"], item["end_line"], item["name"]) for item in found]
+            for index, line in enumerate(lines, 1):
+                caller = next((name for start, end, name in reversed(ranges) if start <= index <= end), "(module)")
+                for match in call_pattern.finditer(line):
+                    raw_calls.append({"path": path, "name": match.group(1), "line": index, "caller": caller})
+
+    declarations = declarations[:max_symbols]
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for symbol in declarations:
+        by_name.setdefault(symbol["name"], []).append(symbol)
+
+    call_edges: list[dict[str, Any]] = []
+    for call in raw_calls:
+        targets = by_name.get(call["name"], [])
+        if len(targets) != 1:
+            continue
+        target = targets[0]
+        if target["path"] == call["path"] and target["name"] == call["caller"]:
+            continue
+        call_edges.append({
+            "id": f"{call['path']}:{call['line']}:{call['caller']}->{target['id']}",
+            "source_path": call["path"], "target_path": target["path"],
+            "caller": call["caller"], "callee": target["qualified_name"],
+            "line": call["line"], "target_line": target["line"],
+        })
+    unique_edges = {edge["id"]: edge for edge in call_edges}
+    return {
+        "symbols": declarations,
+        "call_edges": list(unique_edges.values())[:5000],
+        "symbol_stats": {
+            "symbols": len(declarations),
+            "functions": sum(1 for item in declarations if item["kind"] == "function"),
+            "classes": sum(1 for item in declarations if item["kind"] == "class"),
+            "resolved_call_links": min(len(unique_edges), 5000),
+        },
+        "symbol_note": "Static symbol extraction. Python declarations and calls use AST; JavaScript/TypeScript uses line-based patterns. Call links are emitted only when a name resolves to exactly one analyzed declaration. This is not a complete language parser or proof of runtime calls.",
+    }
