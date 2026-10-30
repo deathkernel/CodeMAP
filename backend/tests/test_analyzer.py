@@ -173,3 +173,21 @@ def test_symbol_intelligence_omits_ambiguous_call_targets() -> None:
         "b.py": "def helper():\n    return 2\n",
     })
     assert report["call_edges"] == []
+
+
+def test_symbol_intelligence_detects_inheritance_duplicates_and_dead_candidates() -> None:
+    from app.services.analyzer import symbol_intelligence
+
+    report = symbol_intelligence({
+        "app/models.py": (
+            "class Base:\n    pass\n\n"
+            "class Child(Base):\n    pass\n\n"
+            "def first():\n    return 42\n\n"
+            "def second():\n    return 42\n\n"
+            "def entry():\n    first()\n"
+        ),
+    })
+    assert any(edge["child"] == "Child" and edge["parent"] == "Base" and edge["resolved"] for edge in report["inheritance_edges"])
+    assert any({item["name"] for item in group} == {"first", "second"} for group in report["duplicate_function_groups"])
+    assert any(item["name"] == "second" for item in report["dead_function_candidates"])
+    assert report["symbol_stats"]["inheritance_links"] == 1

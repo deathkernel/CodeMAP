@@ -5,6 +5,7 @@ This module parses source text only. It never imports, evaluates, or executes re
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 from pathlib import PurePosixPath
 from typing import Any
@@ -324,16 +325,21 @@ def architecture_health(
 
 
 def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dict[str, Any]:
-    """Extract static Python/JS/TS symbol declarations and unambiguous local call links."""
+    """Extract static declarations, local call links, inheritance, and code-quality candidates."""
     declarations: list[dict[str, Any]] = []
     raw_calls: list[dict[str, Any]] = []
+    inheritance: list[dict[str, Any]] = []
+    duplicate_groups: dict[str, list[dict[str, Any]]] = {}
     js_declaration = re.compile(
-        r"^\s*(?:(?:export|default|async|public|private|protected|static)\s+)*"
+        r"^\s*(?:(?:export|default|async|public|private|protected|static|abstract)\s+)*"
         r"(function|class)\s+([A-Za-z_$][\w$]*)"
     )
     js_variable = re.compile(
         r"^\s*(?:(?:export|default|async)\s+)*(?:const|let|var)\s+"
         r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"
+    )
+    js_extends = re.compile(
+        r"^\s*(?:(?:export|default|abstract)\s+)*class\s+([A-Za-z_$][\w$]*)\s+extends\s+([A-Za-z_$][\w$]*)"
     )
     call_pattern = re.compile(r"\b([A-Za-z_$][\w$]*)\s*\(")
 
@@ -347,16 +353,23 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
 
             class Visitor(ast.NodeVisitor):
                 def __init__(self) -> None:
-                    self.scope: list[tuple[str, int, int]] = []
+                    self.scope: list[str] = []
 
                 def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-                    qualified = ".".join([name for name, _, _ in self.scope] + [node.name])
+                    qualified = ".".join(self.scope + [node.name])
                     declarations.append({
                         "id": f"{path}:{node.lineno}:{qualified}", "path": path,
                         "name": node.name, "qualified_name": qualified, "kind": "function",
                         "line": node.lineno, "end_line": getattr(node, "end_lineno", node.lineno),
+                        "top_level": not self.scope,
                     })
-                    self.scope.append((node.name, node.lineno, getattr(node, "end_lineno", node.lineno)))
+                    if not self.scope:
+                        body_dump = ast.dump(ast.Module(body=node.body, type_ignores=[]), include_attributes=False)
+                        fingerprint = hashlib.sha256(body_dump.encode("utf-8")).hexdigest()
+                        duplicate_groups.setdefault(fingerprint, []).append(
+                            {"path": path, "name": node.name, "line": node.lineno}
+                        )
+                    self.scope.append(node.name)
                     for child in node.body:
                         self.visit(child)
                     self.scope.pop()
@@ -364,13 +377,21 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
                 visit_AsyncFunctionDef = visit_FunctionDef
 
                 def visit_ClassDef(self, node: ast.ClassDef) -> None:
-                    qualified = ".".join([name for name, _, _ in self.scope] + [node.name])
+                    qualified = ".".join(self.scope + [node.name])
+                    for base in node.bases:
+                        base_name = base.id if isinstance(base, ast.Name) else base.attr if isinstance(base, ast.Attribute) else ""
+                        if base_name:
+                            inheritance.append({
+                                "path": path, "child": node.name, "parent": base_name,
+                                "line": node.lineno,
+                            })
                     declarations.append({
                         "id": f"{path}:{node.lineno}:{qualified}", "path": path,
                         "name": node.name, "qualified_name": qualified, "kind": "class",
                         "line": node.lineno, "end_line": getattr(node, "end_lineno", node.lineno),
+                        "top_level": not self.scope,
                     })
-                    self.scope.append((node.name, node.lineno, getattr(node, "end_lineno", node.lineno)))
+                    self.scope.append(node.name)
                     for child in node.body:
                         self.visit(child)
                     self.scope.pop()
@@ -385,7 +406,7 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
                     if name:
                         raw_calls.append({
                             "path": path, "name": name, "line": node.lineno,
-                            "caller": self.scope[-1][0] if self.scope else "(module)",
+                            "caller": self.scope[-1] if self.scope else "(module)",
                         })
                     self.generic_visit(node)
 
@@ -397,6 +418,13 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
                 match = js_declaration.match(line)
                 if match:
                     kind, name = match.groups()
+                    if kind == "class":
+                        parent_match = js_extends.match(line)
+                        if parent_match:
+                            inheritance.append({
+                                "path": path, "child": parent_match.group(1),
+                                "parent": parent_match.group(2), "line": index,
+                            })
                 else:
                     variable = js_variable.match(line)
                     if not variable:
@@ -405,14 +433,14 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
                 found.append({
                     "id": f"{path}:{index}:{name}", "path": path, "name": name,
                     "qualified_name": name, "kind": kind.lower(),
-                    "line": index, "end_line": len(lines),
+                    "line": index, "end_line": len(lines), "top_level": True,
                 })
             for position, item in enumerate(found):
                 item["end_line"] = found[position + 1]["line"] - 1 if position + 1 < len(found) else len(lines)
             declarations.extend(found)
             ranges = [(item["line"], item["end_line"], item["name"]) for item in found]
             for index, line in enumerate(lines, 1):
-                caller = next((name for start, end, name in reversed(ranges) if start <= index <= end), "(module)")
+                caller = next((name for first, last, name in reversed(ranges) if first <= index <= last), "(module)")
                 for match in call_pattern.finditer(line):
                     raw_calls.append({"path": path, "name": match.group(1), "line": index, "caller": caller})
 
@@ -436,14 +464,41 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
             "line": call["line"], "target_line": target["line"],
         })
     unique_edges = {edge["id"]: edge for edge in call_edges}
+    incoming_calls: dict[str, int] = {}
+    for edge in unique_edges.values():
+        for target in by_name.get(edge["callee"].split(".")[-1], []):
+            if target["path"] == edge["target_path"]:
+                incoming_calls[target["id"]] = incoming_calls.get(target["id"], 0) + 1
+
+    dead_candidates = [
+        {key: symbol[key] for key in ("id", "path", "name", "qualified_name", "line")}
+        for symbol in declarations
+        if symbol["kind"] == "function" and symbol.get("top_level")
+        and incoming_calls.get(symbol["id"], 0) == 0
+        and symbol["name"] not in {"main", "setup", "teardown"}
+        and not symbol["name"].startswith("__")
+    ]
+    duplicates = [group for group in duplicate_groups.values() if len(group) > 1]
+    class_names = {item["name"] for item in declarations if item["kind"] == "class"}
+    inheritance_edges = [
+        {**edge, "resolved": edge["parent"] in class_names}
+        for edge in inheritance
+    ]
+
     return {
         "symbols": declarations,
         "call_edges": list(unique_edges.values())[:5000],
+        "inheritance_edges": inheritance_edges,
+        "dead_function_candidates": dead_candidates[:500],
+        "duplicate_function_groups": duplicates[:200],
         "symbol_stats": {
             "symbols": len(declarations),
             "functions": sum(1 for item in declarations if item["kind"] == "function"),
             "classes": sum(1 for item in declarations if item["kind"] == "class"),
             "resolved_call_links": min(len(unique_edges), 5000),
+            "inheritance_links": len(inheritance_edges),
+            "dead_function_candidates": len(dead_candidates),
+            "duplicate_function_groups": len(duplicates),
         },
-        "symbol_note": "Static symbol extraction. Python declarations and calls use AST; JavaScript/TypeScript uses line-based patterns. Call links are emitted only when a name resolves to exactly one analyzed declaration. This is not a complete language parser or proof of runtime calls.",
+        "symbol_note": "Static symbol extraction. Python declarations and calls use AST; JavaScript/TypeScript uses line-based patterns. Dead functions are top-level candidates with no resolved incoming calls, not proof of unused code. Duplicate groups compare normalized Python function bodies only. Inheritance links are local name matches and may be incomplete.",
     }

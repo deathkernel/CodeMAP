@@ -40,7 +40,10 @@ type AnalysisResult = {
   symbol_intelligence: {
     symbols: Array<{ id: string; path: string; name: string; qualified_name: string; kind: "function" | "class"; line: number; end_line: number }>;
     call_edges: Array<{ id: string; source_path: string; target_path: string; caller: string; callee: string; line: number; target_line: number }>;
-    symbol_stats: { symbols: number; functions: number; classes: number; resolved_call_links: number };
+    inheritance_edges: Array<{ path: string; child: string; parent: string; line: number; resolved: boolean }>;
+    dead_function_candidates: Array<{ id: string; path: string; name: string; qualified_name: string; line: number }>;
+    duplicate_function_groups: Array<Array<{ path: string; name: string; line: number }>>;
+    symbol_stats: { symbols: number; functions: number; classes: number; resolved_call_links: number; inheritance_links: number; dead_function_candidates: number; duplicate_function_groups: number };
     symbol_note: string;
   };
   architecture_insights: {
@@ -1029,6 +1032,33 @@ function Explorer() {
                     </button>
                   )) : <p className="text-xs text-slate-500">No supported symbols detected.</p>}
                   {result.symbol_intelligence.symbols.length > 80 && <p className="text-[9px] text-slate-600">Showing first 80 symbols.</p>}
+                </div>
+                <div className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Class inheritance relationships</div>
+                <div className="max-h-36 space-y-1 overflow-auto">
+                  {result.symbol_intelligence.inheritance_edges.length ? result.symbol_intelligence.inheritance_edges.map((edge, index) => (
+                    <button key={`${edge.path}:${edge.line}:${index}`} onClick={() => { void openSource(edge.path, edge.line); }} className="flex w-full items-center justify-between gap-2 rounded-lg bg-black/20 px-3 py-2 text-left text-[10px] hover:bg-white/5">
+                      <span className="truncate text-cyan-200">{edge.child} <span className="text-slate-500">extends</span> {edge.parent}</span>
+                      <span className="shrink-0 text-[9px] text-slate-500">{edge.resolved ? "local" : "external?"}</span>
+                    </button>
+                  )) : <p className="text-xs text-slate-500">No inheritance declarations detected.</p>}
+                </div>
+                <div className="mb-2 mt-4 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span>Potentially unused functions</span><span>{result.symbol_intelligence.dead_function_candidates.length}</span>
+                </div>
+                <div className="max-h-36 space-y-1 overflow-auto">
+                  {result.symbol_intelligence.dead_function_candidates.length ? result.symbol_intelligence.dead_function_candidates.slice(0, 30).map((item) => (
+                    <button key={item.id} onClick={() => { void openSource(item.path, item.line); }} className="block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-[10px] text-amber-200 hover:bg-white/5">{item.qualified_name} <span className="text-slate-600">· {item.path}:{item.line}</span></button>
+                  )) : <p className="text-xs text-slate-500">No candidates detected.</p>}
+                </div>
+                <div className="mb-2 mt-4 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span>Duplicate function bodies</span><span>{result.symbol_intelligence.duplicate_function_groups.length} groups</span>
+                </div>
+                <div className="max-h-36 space-y-2 overflow-auto">
+                  {result.symbol_intelligence.duplicate_function_groups.length ? result.symbol_intelligence.duplicate_function_groups.slice(0, 20).map((group, index) => (
+                    <div key={index} className="rounded-lg bg-black/20 p-2">
+                      {group.map((item) => <button key={`${item.path}:${item.line}`} onClick={() => { void openSource(item.path, item.line); }} className="block w-full truncate text-left text-[10px] text-amber-200 hover:text-white">{item.name} · {item.path}:{item.line}</button>)}
+                    </div>
+                  )) : <p className="text-xs text-slate-500">No exact normalized Python body duplicates detected.</p>}
                 </div>
                 <div className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Resolved call links</div>
                 <div className="max-h-40 space-y-1 overflow-auto">
