@@ -55,7 +55,7 @@ function Explorer() {
   const [source, setSource] = useState<{ path: string; content: string; truncated: boolean } | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [explanation, setExplanation] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);\n  const [aiStatus, setAiStatus] = useState("");
   const [aiError, setAiError] = useState("");
 
   const visibleNodes = useMemo(
@@ -114,15 +114,15 @@ function Explorer() {
 
   async function explainSource() {
     if (!source || !selectedNode) return;
-    setAiLoading(true); setAiError(""); setExplanation("");
+    setAiLoading(true); setAiError(""); setExplanation(""); setAiStatus("Checking local Ollama model…");
     try {
-      const response = await fetch(`${API_BASE}/api/ai/explain`, {
+      setAiStatus("If the model is missing, CodeMap will download it automatically. First download may take a few minutes…");\n      const response = await fetch(`${API_BASE}/api/ai/explain`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: source.path, language: selectedNode.language, code: source.content }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Ollama explanation failed.");
-      setExplanation(payload.explanation || "The model returned an empty explanation.");
+      setExplanation(payload.explanation || "The model returned an empty explanation.");\n      setAiStatus(payload.downloaded ? "Model downloaded and explanation generated locally." : "Explanation generated locally.");
     } catch (err) {
       setAiError(err instanceof Error ? err.message : "Could not reach local Ollama.");
     } finally { setAiLoading(false); }
@@ -231,7 +231,7 @@ function Explorer() {
                   <div className="border-b border-white/10 px-3 py-2 text-[10px] text-slate-500">{source.path}{source.truncated ? " · preview truncated" : ""}</div>
                   <pre className="max-h-72 overflow-auto p-3 text-[11px] leading-5 text-slate-300"><code>{source.content}</code></pre>
                 </div>}
-                {aiLoading && <p className="mt-3 text-xs text-indigo-300">Ollama is analysing this file locally…</p>}
+                {aiLoading && <p className="mt-3 text-xs text-indigo-300">{aiStatus || "Preparing local AI…"}</p>}\n                {!aiLoading && aiStatus && <p className="mt-3 text-xs text-emerald-300">{aiStatus}</p>}
                 {aiError && <p role="alert" className="mt-3 text-xs text-rose-300">{aiError}</p>}
                 {explanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-6 text-slate-300">{explanation}</div>}
               </div>}
