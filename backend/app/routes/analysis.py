@@ -54,10 +54,14 @@ async def analyze_github(request: AnalyzeRequest):
                 continue
 
     graph = analyze_sources(sources)
+    bug_report = scan_for_bugs(sources)
     return {
         "repository": inventory["repository"],
         "default_branch": inventory["default_branch"],
         **graph,
+        "bug_findings": bug_report["findings"],
+        "bug_stats": bug_report["stats"],
+        "bug_analysis_note": bug_report["note"],
         "stats": {
             **graph["stats"],
             "inventory_files": inventory["file_count"],
