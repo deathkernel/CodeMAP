@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -57,6 +57,25 @@ function Explorer() {
   const [explanation, setExplanation] = useState("");
   const [aiLoading, setAiLoading] = useState(false);\n  const [aiStatus, setAiStatus] = useState("");
   const [aiError, setAiError] = useState("");
+  const [ollamaState, setOllamaState] = useState<"checking" | "ready" | "missing" | "offline">("checking");
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/api/ai/status`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Ollama status unavailable");
+        return response.json();
+      })
+      .then((status) => {
+        if (!active) return;
+        if (!status.available) setOllamaState("offline");
+        else setOllamaState(status.model_installed ? "ready" : "missing");
+      })
+      .catch(() => {
+        if (active) setOllamaState("offline");
+      });
+    return () => { active = false; };
+  }, []);
 
   const visibleNodes = useMemo(
     () => result?.nodes.filter((node) => node.path.toLowerCase().includes(query.toLowerCase())) ?? [],
@@ -203,7 +222,15 @@ function Explorer() {
           <div className="rounded-xl bg-indigo-500/15 p-2.5 text-indigo-300"><Boxes size={22} /></div>
           <div><div className="text-lg font-bold tracking-tight">CodeMap</div><div className="text-[10px] tracking-[0.2em] text-slate-500">CODEBASE INTELLIGENCE</div></div>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1.5 text-xs text-emerald-300"><ShieldCheck size={14} /> Local-first analysis</div>
+        <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
+          ollamaState === "ready" ? "border-emerald-400/20 bg-emerald-400/5 text-emerald-300" :
+          ollamaState === "offline" ? "border-rose-400/20 bg-rose-400/5 text-rose-300" :
+          "border-amber-400/20 bg-amber-400/5 text-amber-300"
+        }`}><ShieldCheck size={14} /> {
+          ollamaState === "checking" ? "Checking Ollama…" :
+          ollamaState === "ready" ? "Qwen3.5 ready" :
+          ollamaState === "missing" ? "Model will auto-download" : "Ollama offline"
+        }</div>
       </header>
 
       <section className="mx-auto max-w-[1500px] py-10">
