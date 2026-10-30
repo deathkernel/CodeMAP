@@ -8,7 +8,8 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field\nfrom typing import Literal
+from pydantic import BaseModel, Field
+from typing import Literal
 
 router = APIRouter(prefix="/api/ai", tags=["local-ai"])
 
