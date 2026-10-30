@@ -25,7 +25,11 @@ def _python_imports(source: str) -> list[str]:
         if isinstance(node, ast.Import):
             imports.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            imports.append(node.module)
+            prefix = "." * node.level + node.module
+            if node.names and node.names[0].name != "*":
+                imports.extend(f"{prefix}.{alias.name}" for alias in node.names)
+            else:
+                imports.append(prefix)
     return imports
 
 
@@ -33,21 +37,24 @@ def _js_imports(source: str) -> list[str]:
     return JS_IMPORT.findall(source)
 
 
-def _resolve_import(source_path: str, imported: str, known_paths: set[str]) -> str | None:
-    if not imported.startswith("."):
+def _resolve_import(source_path: str, imported: str, known_paths: set[str], python: bool = False) -> str | None:
+    if imported.startswith("."):
+        candidate = str((PurePosixPath(source_path).parent / imported).as_posix())
+        parts: list[str] = []
+        for part in candidate.split("/"):
+            if part == "..":
+                if parts:
+                    parts.pop()
+            elif part not in {"", "."}:
+                parts.append(part)
+        candidate = "/".join(parts)
+    elif python:
+        candidate = imported.replace(".", "/")
+    else:
         return None
-    base = PurePosixPath(source_path).parent
-    candidate = str((base / imported).as_posix())
-    parts: list[str] = []
-    for part in candidate.split("/"):
-        if part == "..":
-            if parts:
-                parts.pop()
-        elif part not in {"", "."}:
-            parts.append(part)
-    candidate = "/".join(parts)
+
     extensions = ("", ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
-    index_extensions = ("/index.js", "/index.jsx", "/index.ts", "/index.tsx")
+    index_extensions = ("/__init__.py", "/index.js", "/index.jsx", "/index.ts", "/index.tsx")
     for suffix in extensions:
         target = candidate + suffix
         if target in known_paths:
@@ -70,7 +77,8 @@ def analyze_sources(sources: dict[str, str], max_files: int = 300) -> dict[str, 
     for path in paths:
         source = sources[path]
         suffix = PurePosixPath(path).suffix.lower()
-        if suffix == ".py":
+        is_python = suffix == ".py"
+        if is_python:
             imports = _python_imports(source)
         elif suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
             imports = _js_imports(source)
@@ -87,15 +95,10 @@ def analyze_sources(sources: dict[str, str], max_files: int = 300) -> dict[str, 
         })
 
         for imported in imports:
-            target = _resolve_import(path, imported, known_paths)
+            target = _resolve_import(path, imported, known_paths, python=is_python)
             if target:
-                edges.append({
-                    "id": f"{path}::{target}",
-                    "source": path,
-                    "target": target,
-                    "label": "imports",
-                })
-            elif imported.startswith("."):
+                edges.append({"id": f"{path}::{target}", "source": path, "target": target, "label": "imports"})
+            elif imported.startswith(".") or is_python:
                 unresolved += 1
 
     return {

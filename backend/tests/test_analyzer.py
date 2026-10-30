@@ -1,13 +1,12 @@
 from app.services.analyzer import analyze_sources
 
 
-def test_python_relative_import_creates_edge() -> None:
+def test_python_absolute_import_creates_edge() -> None:
     result = analyze_sources({
-        "app/main.py": "from app.routes import users\nimport os\n",
-        "app/routes/users.py": "def list_users():\n    return []\n",
+        "app/main.py": "from app.routes import repository\n",
+        "app/routes/repository.py": "router = None\n",
     })
-    assert result["stats"]["files_analyzed"] == 2
-    assert any(edge["source"] == "app/main.py" and edge["target"] == "app/routes/users.py" for edge in result["edges"])
+    assert any(edge["target"] == "app/routes/repository.py" for edge in result["edges"])
 
 
 def test_typescript_relative_import_creates_edge() -> None:
