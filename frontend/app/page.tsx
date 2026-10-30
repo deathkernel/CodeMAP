@@ -58,7 +58,7 @@ function toMermaid(nodes: AnalysisResult["nodes"], edges: AnalysisResult["edges"
     lines.push(`  subgraph ${folderId}["${folder.replaceAll('"', "'")}"]`);
     nodes.filter((node) => getFolderGroup(node.path) === folder).forEach((node) => {
       const id = ids.get(node.id);
-      if (id) lines.push(`    ${id}["${node.path.replaceAll('"', "'").replaceAll("\\n", " ")}"]`);
+      if (id) lines.push(`    ${id}["${node.path.replaceAll('"', "'").replaceAll("\n", " ")}"]`);
     });
     lines.push("  end");
   });
@@ -511,8 +511,7 @@ function Explorer() {
     ]));
     const visibleIds = new Set(visibleGraphNodes.map((node) => node.id));
     const sourceNodes = result.nodes.filter((node) => visibleIds.has(node.id));
-    const sourceById = new Map(sourceNodes.map((node) => [node.id, node]));
-    const escapeSvg = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+        const escapeSvg = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
     const edges = result.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
     const edgeMarkup = edges.map((edge) => {
       const from = positions.get(edge.source);
