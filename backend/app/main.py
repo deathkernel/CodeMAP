@@ -4,12 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.analysis import router as analysis_router
+from app.routes.ai import router as ai_router
 from app.routes.repository import router as repository_router
+from app.routes.source import router as source_router
 
 app = FastAPI(
     title="CodeMap API",
     description="Local-first codebase intelligence API.",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -22,6 +24,8 @@ app.add_middleware(
 
 app.include_router(repository_router)
 app.include_router(analysis_router)
+app.include_router(source_router)
+app.include_router(ai_router)
 
 
 @app.get("/api/health", tags=["system"])

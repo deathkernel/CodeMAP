@@ -52,6 +52,11 @@ function Explorer() {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [source, setSource] = useState<{ path: string; content: string; truncated: boolean } | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [explanation, setExplanation] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const visibleNodes = useMemo(
     () => result?.nodes.filter((node) => node.path.toLowerCase().includes(query.toLowerCase())) ?? [],
@@ -86,6 +91,42 @@ function Explorer() {
     })) ?? [],
     [result],
   );
+
+  async function openSource(path: string) {
+    if (!url || !result) return;
+    setSelected(path);
+    setSourceLoading(true);
+    setSource(null);
+    setExplanation("");
+    setAiError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/repository/source`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, path }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Could not load source.");
+      setSource(payload);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Could not load source file.");
+    } finally { setSourceLoading(false); }
+  }
+
+  async function explainSource() {
+    if (!source || !selectedNode) return;
+    setAiLoading(true); setAiError(""); setExplanation("");
+    try {
+      const response = await fetch(`${API_BASE}/api/ai/explain`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: source.path, language: selectedNode.language, code: source.content }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Ollama explanation failed.");
+      setExplanation(payload.explanation || "The model returned an empty explanation.");
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Could not reach local Ollama.");
+    } finally { setAiLoading(false); }
+  }
 
   async function analyze(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -157,7 +198,7 @@ function Explorer() {
                 <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export Mermaid</button>
               </div>
               <div className="h-[620px]">
-                <ReactFlow nodes={graphNodes} edges={graphEdges} fitView onNodeClick={(_, node) => setSelected(node.id)} minZoom={0.15}>
+                <ReactFlow nodes={graphNodes} edges={graphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
@@ -178,10 +219,22 @@ function Explorer() {
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Search size={15} /> File explorer</div>
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter files..." className="mb-3 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-xs outline-none" />
                 <div className="max-h-64 space-y-1 overflow-auto">
-                  {visibleNodes.map((node) => <button key={node.id} onClick={() => setSelected(node.id)} className={`block w-full truncate rounded-lg px-3 py-2 text-left text-xs ${selected === node.id ? "bg-indigo-500/20 text-indigo-200" : "text-slate-400 hover:bg-white/5"}`}>{node.path}</button>)}
+                  {visibleNodes.map((node) => <button key={node.id} onClick={() => { void openSource(node.id); }} className={`block w-full truncate rounded-lg px-3 py-2 text-left text-xs ${selected === node.id ? "bg-indigo-500/20 text-indigo-200" : "text-slate-400 hover:bg-white/5"}`}>{node.path}</button>)}
                 </div>
               </div>
-              {selectedNode && <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/5 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><FileCode2 size={15} /> Selected file</div><div className="break-all text-xs text-indigo-200">{selectedNode.path}</div><div className="mt-2 text-xs text-slate-400">{selectedNode.language} · {selectedNode.lines} lines</div><p className="mt-3 text-[11px] leading-5 text-slate-500">Source preview and Ollama explanation are planned for the next milestone.</p></div>}
+              {selectedNode && <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/5 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><FileCode2 size={15} /> Selected file</div><div className="break-all text-xs text-indigo-200">{selectedNode.path}</div><div className="mt-2 text-xs text-slate-400">{selectedNode.language} · {selectedNode.lines} lines</div><div className="mt-3 flex gap-2">
+                  <button onClick={() => void openSource(selectedNode.path)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Open source</button>
+                  <button disabled={!source || aiLoading} onClick={() => void explainSource()} className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{aiLoading ? "Thinking..." : "Explain with Ollama"}</button>
+                </div>
+                {sourceLoading && <p className="mt-3 text-xs text-slate-400">Loading source…</p>}
+                {source && <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
+                  <div className="border-b border-white/10 px-3 py-2 text-[10px] text-slate-500">{source.path}{source.truncated ? " · preview truncated" : ""}</div>
+                  <pre className="max-h-72 overflow-auto p-3 text-[11px] leading-5 text-slate-300"><code>{source.content}</code></pre>
+                </div>}
+                {aiLoading && <p className="mt-3 text-xs text-indigo-300">Ollama is analysing this file locally…</p>}
+                {aiError && <p role="alert" className="mt-3 text-xs text-rose-300">{aiError}</p>}
+                {explanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-6 text-slate-300">{explanation}</div>}
+              </div>}
               <p className="text-[11px] leading-5 text-slate-600">{result.analysis_note}</p>
             </aside>
           </div>
