@@ -97,3 +97,54 @@ def test_architecture_insights_handles_acyclic_graph() -> None:
         "app/service.py": "value = 1",
     })
     assert architecture_insights(graph["nodes"], graph["edges"])["circular_dependencies"] == []
+
+
+
+def test_code_intelligence_reports_bottlenecks_and_depth() -> None:
+    from app.services.analyzer import code_intelligence
+
+    graph = analyze_sources({
+        "app/main.py": "import app.service",
+        "app/service.py": "import app.shared",
+        "app/other.py": "import app.shared",
+        "app/shared.py": "value = 1",
+        "docs/readme.md": "text",
+    })
+    result = code_intelligence(graph["nodes"], graph["edges"])
+    assert result["dependency_depth"]["max_depth"] == 2
+    assert result["dependency_depth"]["reachable_files"] == 4
+    assert result["dependency_depth"]["unreachable_files"] == 1
+    assert any(item["path"] == "app/shared.py" for item in result["bottleneck_files"])
+
+
+def test_architecture_health_scores_cycles_and_module_risk() -> None:
+    from app.services.analyzer import architecture_health
+
+    graph = analyze_sources({
+        "app/a.py": "import app.b\n" + "value = 1\n" * 30,
+        "app/b.py": "import app.a\n",
+        "app/service.py": "value = 1\n",
+        "tests/test_app.py": "value = eval('1')\n",
+    })
+    findings = [{"path": "tests/test_app.py", "severity": "high", "rule_id": "dynamic-code-execution"}]
+    health = architecture_health(graph["nodes"], graph["edges"], findings)
+    assert health["health_score"] == 78
+    assert health["health_grade"] == "watch"
+    assert health["health_stats"]["circular_files"] == 2
+    app_module = next(item for item in health["module_health"] if item["name"] == "app")
+    assert app_module["circular_files"] == 2
+    assert health["health_note"].startswith("Heuristic indicators")
+
+
+def test_local_folder_response_includes_architecture_health() -> None:
+    response = client.post("/api/repository/analyze-folder", json={
+        "folder_name": "health-demo",
+        "files": [
+            {"path": "app/main.py", "content": "import app.service\n"},
+            {"path": "app/service.py", "content": "value = eval('1')\n"},
+        ],
+    })
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["architecture_health"]["health_stats"]["modules"] == 1
+    assert "code_intelligence" in payload

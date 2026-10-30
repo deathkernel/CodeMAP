@@ -190,3 +190,134 @@ def architecture_insights(nodes: list[dict[str, Any]], edges: list[dict[str, Any
         },
         "architecture_note": "Entry points are filename-based candidates. Circular dependencies are detected only across locally resolved imports in the analyzed file set.",
     }
+
+
+def code_intelligence(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+    """Calculate graph connectivity and dependency-depth indicators."""
+    paths = [node["path"] for node in nodes]
+    known = set(paths)
+    incoming = {path: 0 for path in paths}
+    outgoing = {path: 0 for path in paths}
+    adjacency = {path: [] for path in paths}
+    for edge in edges:
+        source, target = edge.get("source"), edge.get("target")
+        if source in known and target in known:
+            outgoing[source] += 1
+            incoming[target] += 1
+            adjacency[source].append(target)
+    bottlenecks = [
+        {"path": path, "fan_in": incoming[path], "fan_out": outgoing[path],
+         "connections": incoming[path] + outgoing[path]}
+        for path in paths if incoming[path] >= 2 or outgoing[path] >= 3
+    ]
+    bottlenecks.sort(key=lambda item: (-item["connections"], item["path"]))
+    roots = [path for path in paths if incoming[path] == 0]
+    distances: dict[str, int] = {}
+    queue = [(path, 0) for path in roots]
+    while queue:
+        current, depth = queue.pop(0)
+        if current in distances and distances[current] <= depth:
+            continue
+        distances[current] = depth
+        queue.extend((target, depth + 1) for target in adjacency[current])
+    deepest = max(distances.values(), default=0)
+    return {
+        "bottleneck_files": bottlenecks[:10],
+        "unreferenced_files": [
+            {"path": path, "reason": "No incoming import edge in the analyzed graph"}
+            for path in paths if incoming[path] == 0
+        ],
+        "dependency_depth": {
+            "max_depth": deepest, "reachable_files": len(distances),
+            "unreachable_files": len(paths) - len(distances),
+            "deepest_files": sorted(path for path, depth in distances.items() if depth == deepest) if distances else [],
+        },
+        "code_intelligence_note": "Connectivity and depth use only locally resolved imports. Unreferenced files may still be used by frameworks, dynamic imports, tests, or external entry points.",
+    }
+
+
+def architecture_health(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]],
+    bug_findings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Produce transparent heuristic module complexity and risk indicators."""
+    known = {node["path"] for node in nodes}
+    node_by_path = {node["path"]: node for node in nodes}
+    incoming = {path: 0 for path in known}
+    outgoing = {path: 0 for path in known}
+    for edge in edges:
+        source, target = edge.get("source"), edge.get("target")
+        if source in known and target in known:
+            outgoing[source] += 1
+            incoming[target] += 1
+
+    cycles = architecture_insights(nodes, edges)["circular_dependencies"]
+    cycle_files = {path for cycle in cycles for path in cycle}
+    findings_by_module: dict[str, dict[str, int]] = {}
+    for finding in bug_findings:
+        path = finding.get("path", "")
+        if path not in known:
+            continue
+        parts = PurePosixPath(path).parts
+        module = parts[0] if len(parts) > 1 else "(root)"
+        counts = findings_by_module.setdefault(module, {"high": 0, "medium": 0, "low": 0})
+        severity = finding.get("severity", "low")
+        if severity in counts:
+            counts[severity] += 1
+
+    grouped: dict[str, list[str]] = {}
+    for path in sorted(known):
+        parts = PurePosixPath(path).parts
+        grouped.setdefault(parts[0] if len(parts) > 1 else "(root)", []).append(path)
+
+    module_health = []
+    for module, paths in grouped.items():
+        path_set = set(paths)
+        module_edges = [edge for edge in edges if edge.get("source") in path_set and edge.get("target") in known]
+        internal = sum(1 for edge in module_edges if edge.get("target") in path_set)
+        external = len(module_edges) - internal
+        total_lines = sum(node_by_path[path].get("lines", 0) for path in paths)
+        average_lines = total_lines / max(1, len(paths))
+        average_connections = sum(incoming[path] + outgoing[path] for path in paths) / max(1, len(paths))
+        cycle_count = sum(1 for path in paths if path in cycle_files)
+        bugs = findings_by_module.get(module, {"high": 0, "medium": 0, "low": 0})
+        complexity = min(100, round(average_lines / 2 + average_connections * 10 + external * 3))
+        risk = min(100, bugs["high"] * 18 + bugs["medium"] * 8 + bugs["low"] * 3 + cycle_count * 12 + max(0, average_connections - 3) * 8)
+        module_health.append({
+            "name": module, "files": len(paths), "lines": total_lines,
+            "dependencies": len(module_edges), "internal_dependencies": internal,
+            "external_dependencies": external, "circular_files": cycle_count,
+            "bug_counts": bugs, "complexity_score": complexity,
+            "risk_score": round(risk),
+            "risk_level": "high" if risk >= 45 else "medium" if risk >= 20 else "low",
+        })
+    module_health.sort(key=lambda item: (-item["risk_score"], -item["complexity_score"], item["name"]))
+    total_bugs = {
+        severity: sum(1 for finding in bug_findings if finding.get("severity") == severity)
+        for severity in ("high", "medium", "low")
+    }
+    penalties = len(cycles) * 12 + total_bugs["high"] * 10 + total_bugs["medium"] * 4 + total_bugs["low"]
+    score = max(0, 100 - min(100, penalties))
+    factors = []
+    if cycles:
+        factors.append(f"{len(cycles)} circular dependency group(s)")
+    if total_bugs["high"]:
+        factors.append(f"{total_bugs['high']} high-severity static finding(s)")
+    if total_bugs["medium"]:
+        factors.append(f"{total_bugs['medium']} medium-severity static finding(s)")
+    if not factors:
+        factors.append("No circular groups or high/medium static findings detected")
+    return {
+        "health_score": score,
+        "health_grade": "healthy" if score >= 85 else "watch" if score >= 65 else "needs_attention",
+        "risk_factors": factors,
+        "module_health": module_health,
+        "health_stats": {
+            "modules": len(module_health),
+            "high_risk_modules": sum(1 for item in module_health if item["risk_level"] == "high"),
+            "medium_risk_modules": sum(1 for item in module_health if item["risk_level"] == "medium"),
+            "circular_files": len(cycle_files), "bug_findings": len(bug_findings),
+        },
+        "health_note": "Heuristic indicators based on analyzed lines, locally resolved imports, detected cycles, and static findings. Complexity is not cyclomatic complexity; the score is not a guarantee of code quality or runtime correctness.",
+    }
+}

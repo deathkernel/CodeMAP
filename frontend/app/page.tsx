@@ -44,6 +44,19 @@ type AnalysisResult = {
     architecture_stats: { entry_points: number; circular_dependency_groups: number; top_level_modules: number };
     architecture_note: string;
   };
+  architecture_health: {
+    health_score: number;
+    health_grade: "healthy" | "watch" | "needs_attention";
+    risk_factors: string[];
+    module_health: Array<{
+      name: string; files: number; lines: number; dependencies: number;
+      internal_dependencies: number; external_dependencies: number; circular_files: number;
+      bug_counts: { high: number; medium: number; low: number };
+      complexity_score: number; risk_score: number; risk_level: "high" | "medium" | "low";
+    }>;
+    health_stats: { modules: number; high_risk_modules: number; medium_risk_modules: number; circular_files: number; bug_findings: number };
+    health_note: string;
+  };
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -727,6 +740,39 @@ function Explorer() {
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.architecture_insights.architecture_note}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck size={16} className="text-emerald-300" /> Architecture health</div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${result.architecture_health.health_grade === "healthy" ? "bg-emerald-400/10 text-emerald-300" : result.architecture_health.health_grade === "watch" ? "bg-amber-400/10 text-amber-300" : "bg-rose-400/10 text-rose-300"}`}>{result.architecture_health.health_score}/100 · {result.architecture_health.health_grade.replaceAll("_", " ")}</span>
+                </div>
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  <Metric label="High risk" value={result.architecture_health.health_stats.high_risk_modules} />
+                  <Metric label="Medium risk" value={result.architecture_health.health_stats.medium_risk_modules} />
+                  <Metric label="Cycle files" value={result.architecture_health.health_stats.circular_files} />
+                </div>
+                <div className="mb-4">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Risk factors</div>
+                  {result.architecture_health.risk_factors.map((factor) => <p key={factor} className="mb-1 rounded-lg bg-black/20 px-3 py-2 text-xs text-slate-300">{factor}</p>)}
+                </div>
+                <div className="mb-3">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Module complexity & risk</div>
+                  {result.architecture_health.module_health.slice(0, 8).map((module) => (
+                    <button key={module.name} onClick={() => { setActiveFolder(module.name); setShowDisconnected(false); }} className="mb-2 block w-full rounded-lg bg-black/20 p-3 text-left hover:bg-white/5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-semibold text-slate-200">{module.name}</span>
+                        <span className={`text-[10px] uppercase ${module.risk_level === "high" ? "text-rose-300" : module.risk_level === "medium" ? "text-amber-300" : "text-emerald-300"}`}>{module.risk_level} risk</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-slate-500">
+                        <span>Complexity {module.complexity_score}/100</span><span>Risk {module.risk_score}/100</span>
+                        <span>{module.files} files · {module.lines} lines</span><span>{module.dependencies} dependencies</span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-indigo-400" style={{ width: `${module.complexity_score}%` }} /></div>
+                    </button>
+                  ))}
+                  {!result.architecture_health.module_health.length && <p className="text-xs text-slate-500">No module groups available.</p>}
+                </div>
+                <p className="text-[10px] leading-4 text-slate-600">{result.architecture_health.health_note}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-cyan-300" /> Code intelligence pro</div>
