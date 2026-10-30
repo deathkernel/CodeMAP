@@ -373,8 +373,7 @@ function Explorer() {
           </form>
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-5 py-3 text-sm font-semibold text-indigo-200 transition hover:bg-indigo-500/20">
             <FolderOpen size={17} /> Select project folder
-            <input type="file" multiple onChange={analyzeFolder} className="hidden" // @ts-expect-error Chromium directory selection
-              webkitdirectory="" />
+            <input type="file" multiple onChange={analyzeFolder} className="hidden" {...({ webkitdirectory: "" } as React.InputHTMLAttributes<HTMLInputElement> & { webkitdirectory: string })} />
           </label>
         </div>
         {error && <p role="alert" className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-300">{error}</p>}

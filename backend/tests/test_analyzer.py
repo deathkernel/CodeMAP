@@ -1,4 +1,9 @@
+from fastapi.testclient import TestClient
+
+from app.main import app
 from app.services.analyzer import analyze_sources
+
+client = TestClient(app)
 
 
 def test_python_absolute_import_creates_edge() -> None:
