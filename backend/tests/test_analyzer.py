@@ -81,8 +81,8 @@ def test_architecture_insights_detect_circular_imports() -> None:
     from app.services.analyzer import architecture_insights
 
     graph = analyze_sources({
-        "app/a.py": "from . import b",
-        "app/b.py": "from . import a",
+        "app/a.py": "import app.b",
+        "app/b.py": "import app.a",
         "app/c.py": "value = 1",
     })
     insights = architecture_insights(graph["nodes"], graph["edges"])
