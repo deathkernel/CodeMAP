@@ -288,6 +288,45 @@ function Explorer() {
     [graphEdges, visibleNodeIds, showDisconnected],
   );
 
+  const dependencyDrilldown = useMemo(() => {
+    if (!result || !selected) return null;
+    const known = new Set(result.nodes.map((node) => node.id));
+    if (!known.has(selected)) return null;
+    const incoming = new Map<string, string[]>();
+    const outgoing = new Map<string, string[]>();
+    result.nodes.forEach((node) => {
+      incoming.set(node.id, []);
+      outgoing.set(node.id, []);
+    });
+    result.edges.forEach((edge) => {
+      if (!known.has(edge.source) || !known.has(edge.target)) return;
+      outgoing.get(edge.source)?.push(edge.target);
+      incoming.get(edge.target)?.push(edge.source);
+    });
+    const walk = (adjacency: Map<string, string[]>) => {
+      const depths = new Map<string, number>();
+      const queue = (adjacency.get(selected) || []).map((path) => [path, 1] as const);
+      while (queue.length) {
+        const [path, depth] = queue.shift()!;
+        const previous = depths.get(path);
+        if (previous !== undefined && previous <= depth) continue;
+        depths.set(path, depth);
+        (adjacency.get(path) || []).forEach((next) => queue.push([next, depth + 1]));
+      }
+      depths.delete(selected);
+      return [...depths.entries()]
+        .map(([path, depth]) => ({ path, depth }))
+        .sort((a, b) => a.depth - b.depth || a.path.localeCompare(b.path));
+    };
+    const unique = (paths: string[]) => [...new Set(paths)].sort();
+    return {
+      incoming: unique(incoming.get(selected) || []),
+      outgoing: unique(outgoing.get(selected) || []),
+      upstream: walk(incoming),
+      downstream: walk(outgoing),
+    };
+  }, [result, selected]);
+
   async function openSource(path: string) {
     if (!result) return;
     setSelected(path);
@@ -710,6 +749,52 @@ function Explorer() {
                   <Metric label="Not fetched" value={result.stats.files_not_fetched} />
                 </div>
               </div>
+              {dependencyDrilldown && (
+                <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/[0.04] p-5">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold"><Workflow size={16} className="text-indigo-300" /> Dependency drilldown</div>
+                    <button onClick={() => setSelected(null)} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] text-slate-400 hover:bg-white/5">Clear focus</button>
+                  </div>
+                  <div className="mb-3 break-all rounded-lg bg-black/20 px-3 py-2 text-xs font-semibold text-indigo-200">{selected}</div>
+                  <div className="mb-4 grid grid-cols-2 gap-2">
+                    <Metric label="Imports" value={dependencyDrilldown.outgoing.length} />
+                    <Metric label="Imported by" value={dependencyDrilldown.incoming.length} />
+                    <Metric label="Downstream files" value={dependencyDrilldown.downstream.length} />
+                    <Metric label="Upstream files" value={dependencyDrilldown.upstream.length} />
+                  </div>
+                  <div className="mb-4">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Direct dependencies · imports</div>
+                    {dependencyDrilldown.outgoing.length ? dependencyDrilldown.outgoing.map((path) => (
+                      <button key={path} onClick={() => { void openSource(path); }} className="mb-1 block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-[11px] text-cyan-200 hover:bg-white/5">{path}</button>
+                    )) : <p className="text-xs text-slate-500">No locally resolved imports.</p>}
+                  </div>
+                  <div className="mb-4">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Direct dependents · imported by</div>
+                    {dependencyDrilldown.incoming.length ? dependencyDrilldown.incoming.map((path) => (
+                      <button key={path} onClick={() => { void openSource(path); }} className="mb-1 block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-[11px] text-emerald-200 hover:bg-white/5">{path}</button>
+                    )) : <p className="text-xs text-slate-500">No analyzed files import this file.</p>}
+                  </div>
+                  <div className="mb-3">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Dependency paths · downstream</div>
+                    {dependencyDrilldown.downstream.length ? dependencyDrilldown.downstream.slice(0, 12).map((item) => (
+                      <button key={item.path} onClick={() => { void openSource(item.path); }} className="mb-1 flex w-full items-center justify-between gap-2 rounded-lg bg-black/20 px-3 py-2 text-left hover:bg-white/5">
+                        <span className="truncate text-[11px] text-slate-300">{item.path}</span>
+                        <span className="shrink-0 text-[10px] tabular-nums text-indigo-300">depth {item.depth}</span>
+                      </button>
+                    )) : <p className="text-xs text-slate-500">No downstream dependency path found.</p>}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Dependency paths · upstream</div>
+                    {dependencyDrilldown.upstream.length ? dependencyDrilldown.upstream.slice(0, 12).map((item) => (
+                      <button key={item.path} onClick={() => { void openSource(item.path); }} className="mb-1 flex w-full items-center justify-between gap-2 rounded-lg bg-black/20 px-3 py-2 text-left hover:bg-white/5">
+                        <span className="truncate text-[11px] text-slate-300">{item.path}</span>
+                        <span className="shrink-0 text-[10px] tabular-nums text-emerald-300">depth {item.depth}</span>
+                      </button>
+                    )) : <p className="text-xs text-slate-500">No upstream dependency path found.</p>}
+                  </div>
+                  <p className="mt-3 text-[10px] leading-4 text-slate-600">Paths include only dependencies resolved inside the analyzed file set. Dynamic imports and external packages may not appear.</p>
+                </div>
+              )}
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-indigo-300" /> Architecture intelligence</div>
                 <div className="mb-4 grid grid-cols-3 gap-2">
