@@ -11,7 +11,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
-  ArrowRight, Boxes, Bug, FileCode2, Github, LoaderCircle,
+  ArrowRight, Boxes, Bug, FileCode2, FolderOpen, Github, LoaderCircle,
   Network, Search, ShieldCheck, Sparkles, Workflow,
 } from "lucide-react";
 
@@ -50,6 +50,7 @@ function toMermaid(result: AnalysisResult) {
 
 function Explorer() {
   const [url, setUrl] = useState("");
+  const [localSources, setLocalSources] = useState<Record<string, string>>({});
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -120,13 +121,19 @@ function Explorer() {
   );
 
   async function openSource(path: string) {
-    if (!url || !result) return;
+    if (!result) return;
     setSelected(path);
     setSourceLoading(true);
     setSource(null);
     setExplanation("");
     setAiError("");
     try {
+      if (Object.prototype.hasOwnProperty.call(localSources, path)) {
+        const content = localSources[path];
+        setSource({ path, content: content.slice(0, 20000), truncated: content.length > 20000 });
+        return;
+      }
+      if (!url) throw new Error("Source is not available for this file.");
       const response = await fetch(`${API_BASE}/api/repository/source`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, path }),
@@ -191,7 +198,6 @@ function Explorer() {
 
 
   async function explainBug(finding: AnalysisResult["bug_findings"][number]) {
-    if (!url) return;
     setBugAiLoadingId(finding.id);
     setBugAiFindingId(finding.id);
     setBugAiExplanation("");
@@ -199,13 +205,18 @@ function Explorer() {
     setAiStatus("Preparing local AI…");
     try {
       await prepareModel();
-      const sourceResponse = await fetch(`${API_BASE}/api/repository/source`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, path: finding.path }),
-      });
-      const sourcePayload = await sourceResponse.json();
-      if (!sourceResponse.ok) throw new Error(sourcePayload.detail || "Could not load source for this finding.");
+      let sourceCode = localSources[finding.path];
+      if (sourceCode === undefined) {
+        if (!url) throw new Error("Source is not available for this finding.");
+        const sourceResponse = await fetch(`${API_BASE}/api/repository/source`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, path: finding.path }),
+        });
+        const sourcePayload = await sourceResponse.json();
+        if (!sourceResponse.ok) throw new Error(sourcePayload.detail || "Could not load source for this finding.");
+        sourceCode = sourcePayload.content;
+      }
 
       const extension = finding.path.split(".").pop()?.toLowerCase() || "unknown";
       const language = extension === "py" ? "python" : extension;
@@ -221,7 +232,7 @@ function Explorer() {
           severity: finding.severity,
           message: finding.message,
           recommendation: finding.recommendation,
-          code: sourcePayload.content,
+          code: sourceCode,
         }),
       });
       const payload = await response.json();
@@ -248,9 +259,65 @@ function Explorer() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Analysis failed. Check the API server.");
+      setLocalSources({});
       setResult(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not connect to CodeMap API.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+
+  async function analyzeFolder(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!selectedFiles.length) return;
+
+    setLoading(true);
+    setError("");
+    setResult(null);
+    setLocalSources({});
+    setUrl("");
+
+    try {
+      const supported = selectedFiles.filter((file) => {
+        const path = file.webkitRelativePath || file.name;
+        const ignored = [".git/", "node_modules/", ".next/", "dist/", "build/", "venv/", ".venv/", "__pycache__/"];
+        const suffixes = [".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".java", ".go", ".rs", ".c", ".h", ".cpp", ".cs", ".php", ".rb", ".swift", ".kt", ".vue", ".svelte", ".html", ".css", ".scss", ".json", ".yaml", ".yml", ".toml", ".md", ".sql", ".sh"];
+        return !ignored.some((part) => path.split("/").includes(part.slice(0, -1))) &&
+          suffixes.some((suffix) => path.toLowerCase().endsWith(suffix));
+      }).slice(0, 120);
+
+      const sources: Record<string, string> = {};
+      const payloadFiles: Array<{ path: string; content: string }> = [];
+      let totalBytes = 0;
+
+      for (const file of supported) {
+        if (file.size > 256 * 1024) continue;
+        totalBytes += file.size;
+        if (totalBytes > 8 * 1024 * 1024) throw new Error("Selected source files exceed the 8 MB limit.");
+        const content = await file.text();
+        const path = file.webkitRelativePath || file.name;
+        sources[path] = content;
+        payloadFiles.push({ path, content });
+      }
+
+      if (!payloadFiles.length) throw new Error("No supported source files found within the size limits.");
+      const folderName = (selectedFiles[0].webkitRelativePath || selectedFiles[0].name).split("/")[0];
+      const response = await fetch(`${API_BASE}/api/repository/analyze-folder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder_name: folderName, files: payloadFiles }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Folder analysis failed.");
+      setLocalSources(sources);
+      setResult(payload);
+      setSelected(null);
+      setSource(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not analyze this folder.");
     } finally {
       setLoading(false);
     }
@@ -294,7 +361,8 @@ function Explorer() {
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">Map repository dependencies, navigate source files, and uncover the structure behind your project. Your AI stays local with Ollama.</p>
         </div>
 
-        <form onSubmit={analyze} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 md:flex-row">
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 md:flex-row">
+          <form onSubmit={analyze} className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row">
           <div className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-[#080d17] px-4">
             <Github size={18} className="text-slate-500" />
             <input value={url} onChange={(event) => setUrl(event.target.value)} required type="url" placeholder="https://github.com/owner/repository" className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-slate-600" />
@@ -302,7 +370,13 @@ function Explorer() {
           <button disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-indigo-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-60">
             {loading ? <LoaderCircle className="animate-spin" size={17} /> : <ArrowRight size={17} />} {loading ? "Mapping..." : "Generate map"}
           </button>
-        </form>
+          </form>
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-5 py-3 text-sm font-semibold text-indigo-200 transition hover:bg-indigo-500/20">
+            <FolderOpen size={17} /> Select project folder
+            <input type="file" multiple onChange={analyzeFolder} className="hidden" // @ts-expect-error Chromium directory selection
+              webkitdirectory="" />
+          </label>
+        </div>
         {error && <p role="alert" className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-300">{error}</p>}
 
         {result ? (
