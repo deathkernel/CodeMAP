@@ -48,13 +48,22 @@ type AnalysisResult = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-function toMermaid(result: AnalysisResult) {
+function toMermaid(nodes: AnalysisResult["nodes"], edges: AnalysisResult["edges"]) {
   const lines = ["flowchart LR"];
-  result.nodes.forEach((node, index) => {
-    lines.push(`  F${index}["${node.path.replaceAll('"', "'")}"]`);
+  const ids = new Map(nodes.map((node, index) => [node.id, `F${index}`]));
+  const folders = [...new Set(nodes.map((node) => getFolderGroup(node.path)))].sort();
+
+  folders.forEach((folder, folderIndex) => {
+    const folderId = `GROUP_${folderIndex}`;
+    lines.push(`  subgraph ${folderId}["${folder.replaceAll('"', "'")}"]`);
+    nodes.filter((node) => getFolderGroup(node.path) === folder).forEach((node) => {
+      const id = ids.get(node.id);
+      if (id) lines.push(`    ${id}["${node.path.replaceAll('"', "'").replaceAll("\\n", " ")}"]`);
+    });
+    lines.push("  end");
   });
-  const ids = new Map(result.nodes.map((node, index) => [node.id, `F${index}`]));
-  result.edges.forEach((edge) => {
+
+  edges.forEach((edge) => {
     const from = ids.get(edge.source);
     const to = ids.get(edge.target);
     if (from && to) lines.push(`  ${from} --> ${to}`);
@@ -473,13 +482,96 @@ function Explorer() {
 
   function exportMermaid() {
     if (!result) return;
-    const blob = new Blob([toMermaid(result)], { type: "text/plain;charset=utf-8" });
+    const visibleIds = new Set(visibleGraphNodes.map((node) => node.id));
+    const nodes = result.nodes.filter((node) => visibleIds.has(node.id));
+    const edges = result.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
+    const blob = new Blob([toMermaid(nodes, edges)], { type: "text/plain;charset=utf-8" });
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = "codemap-architecture.mmd";
+    anchor.download = `codemap-${activeFolder === "all" ? "architecture" : activeFolder.replaceAll("/", "-")}.mmd`;
     anchor.click();
     URL.revokeObjectURL(href);
+  }
+
+  async function exportPng() {
+    if (!result || !visibleGraphNodes.length) return;
+    const width = 205;
+    const height = 126;
+    const padding = 72;
+    const minX = Math.min(...visibleGraphNodes.map((node) => node.position.x));
+    const minY = Math.min(...visibleGraphNodes.map((node) => node.position.y));
+    const maxX = Math.max(...visibleGraphNodes.map((node) => node.position.x + width));
+    const maxY = Math.max(...visibleGraphNodes.map((node) => node.position.y + height));
+    const svgWidth = maxX - minX + padding * 2;
+    const svgHeight = maxY - minY + padding * 2;
+    const positions = new Map(visibleGraphNodes.map((node) => [
+      node.id,
+      { x: node.position.x - minX + padding, y: node.position.y - minY + padding },
+    ]));
+    const visibleIds = new Set(visibleGraphNodes.map((node) => node.id));
+    const sourceNodes = result.nodes.filter((node) => visibleIds.has(node.id));
+    const sourceById = new Map(sourceNodes.map((node) => [node.id, node]));
+    const escapeSvg = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+    const edges = result.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
+    const edgeMarkup = edges.map((edge) => {
+      const from = positions.get(edge.source);
+      const to = positions.get(edge.target);
+      if (!from || !to) return "";
+      const startX = from.x + width;
+      const startY = from.y + height / 2;
+      const endX = to.x;
+      const endY = to.y + height / 2;
+      const curve = Math.max(45, Math.abs(endX - startX) / 2);
+      return `<path d="M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#arrow)" opacity="0.82"/>`;
+    }).join("");
+    const nodeMarkup = sourceNodes.map((node) => {
+      const point = positions.get(node.id)!;
+      const style = getLanguageStyle(node.language);
+      return `<g transform="translate(${point.x} ${point.y})">
+        <rect width="${width}" height="${height}" rx="14" fill="${style.background}" stroke="${style.border}" stroke-width="2"/>
+        <text x="16" y="25" fill="${style.text}" font-size="11" font-weight="700">${escapeSvg(node.language.toUpperCase())}</text>
+        <text x="16" y="53" fill="#f8fafc" font-size="14" font-weight="700">${escapeSvg(node.label.slice(0, 25))}</text>
+        <text x="16" y="76" fill="#94a3b8" font-size="10">${escapeSvg(node.path.slice(0, 31))}</text>
+        <text x="16" y="105" fill="#64748b" font-size="10">${node.lines} lines</text>
+      </g>`;
+    }).join("");
+    const title = activeFolder === "all" ? "CodeMap Architecture" : `CodeMap · ${activeFolder}`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
+      <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#818cf8"/></marker></defs>
+      <rect width="100%" height="100%" fill="#080d17"/>
+      <text x="${padding}" y="38" fill="#e2e8f0" font-size="20" font-weight="700">${escapeSvg(title)}</text>
+      <text x="${padding}" y="57" fill="#64748b" font-size="11">${sourceNodes.length} files · ${edges.length} dependencies · Exported from CodeMap</text>
+      ${edgeMarkup}${nodeMarkup}
+    </svg>`;
+    const svgUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+    try {
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Could not render the architecture image."));
+        image.src = svgUrl;
+      });
+      const scale = Math.min(2, 12000 / svgWidth, 12000 / svgHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(svgWidth * scale));
+      canvas.height = Math.max(1, Math.round(svgHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("PNG export is not supported by this browser.");
+      context.scale(scale, scale);
+      context.drawImage(image, 0, 0);
+      const png = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("PNG rendering failed.")), "image/png");
+      });
+      const pngUrl = URL.createObjectURL(png);
+      const anchor = document.createElement("a");
+      anchor.href = pngUrl;
+      anchor.download = `codemap-${activeFolder === "all" ? "architecture" : activeFolder.replaceAll("/", "-")}.png`;
+      anchor.click();
+      URL.revokeObjectURL(pngUrl);
+    } finally {
+      URL.revokeObjectURL(svgUrl);
+    }
   }
 
   function renderTree(items: FileTreeItem[], depth = 0): React.ReactNode {
@@ -563,7 +655,10 @@ function Explorer() {
             <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
                 <div><div className="font-semibold">{result.repository}</div><div className="mt-1 text-xs text-slate-500">Branch: {result.default_branch}</div></div>
-                <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export Mermaid</button>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={exportPng} className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-500/20">Export PNG</button>
+                  <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export Mermaid</button>
+                </div>
               </div>
               <div className="border-b border-white/10 px-4 py-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
