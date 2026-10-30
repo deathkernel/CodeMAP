@@ -8,7 +8,8 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl
 
-from app.services.analyzer import analyze_sources\nfrom app.services.bug_detector import scan_for_bugs
+from app.services.analyzer import analyze_sources
+from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 
 router = APIRouter(prefix="/api/repository", tags=["analysis"])
