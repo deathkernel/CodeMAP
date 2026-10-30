@@ -8,7 +8,7 @@ CodeMap sends code explanations only to the Ollama endpoint configured for the b
 
 ```env
 OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Qwen3.5-9B-Q6_K.gguf
+OLLAMA_MODEL=hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q6_K
 OLLAMA_REQUEST_TIMEOUT_SECONDS=240
 ```
 
@@ -23,3 +23,8 @@ The default is the locally hosted Qwen3.5 9B GGUF Q6_K model shown above. If you
 Check the local model connection at `GET /api/ai/status`. The response includes `model_installed`.
 
 Source previews are limited to 256 KB and explanation requests to 20,000 characters. Repository source is treated as untrusted input and is never executed by CodeMap. Model downloads happen only when the user requests an AI explanation, not silently at application startup.
+
+
+## AI-assisted bug explanations
+
+Each static finding can be sent to the configured local Ollama model for a deeper explanation and a focused fix suggestion. The model is instructed to treat repository source as untrusted data and to describe scanner findings as heuristics, not confirmed vulnerabilities. Review suggested changes before applying them.

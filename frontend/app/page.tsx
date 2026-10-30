@@ -58,8 +58,13 @@ function Explorer() {
   const [source, setSource] = useState<{ path: string; content: string; truncated: boolean } | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [explanation, setExplanation] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);\n  const [aiStatus, setAiStatus] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiStatus, setAiStatus] = useState("");
   const [aiError, setAiError] = useState("");
+  const [bugAiLoadingId, setBugAiLoadingId] = useState<string | null>(null);
+  const [bugAiFindingId, setBugAiFindingId] = useState<string | null>(null);
+  const [bugAiExplanation, setBugAiExplanation] = useState("");
+  const [bugAiError, setBugAiError] = useState("");
   const [ollamaState, setOllamaState] = useState<"checking" | "ready" | "missing" | "offline">("checking");
 
   useEffect(() => {
@@ -184,6 +189,52 @@ function Explorer() {
     } finally { setAiLoading(false); }
   }
 
+
+  async function explainBug(finding: AnalysisResult["bug_findings"][number]) {
+    if (!url) return;
+    setBugAiLoadingId(finding.id);
+    setBugAiFindingId(finding.id);
+    setBugAiExplanation("");
+    setBugAiError("");
+    setAiStatus("Preparing local AI…");
+    try {
+      await prepareModel();
+      const sourceResponse = await fetch(`${API_BASE}/api/repository/source`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, path: finding.path }),
+      });
+      const sourcePayload = await sourceResponse.json();
+      if (!sourceResponse.ok) throw new Error(sourcePayload.detail || "Could not load source for this finding.");
+
+      const extension = finding.path.split(".").pop()?.toLowerCase() || "unknown";
+      const language = extension === "py" ? "python" : extension;
+      const response = await fetch(`${API_BASE}/api/ai/explain-bug`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: finding.path,
+          language,
+          line: finding.line,
+          rule_id: finding.rule_id,
+          title: finding.title,
+          severity: finding.severity,
+          message: finding.message,
+          recommendation: finding.recommendation,
+          code: sourcePayload.content,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "AI bug explanation failed.");
+      setBugAiExplanation(payload.explanation || "The model returned an empty explanation.");
+      setAiStatus("Bug explanation generated locally.");
+    } catch (err) {
+      setBugAiError(err instanceof Error ? err.message : "Could not explain this finding.");
+    } finally {
+      setBugAiLoadingId(null);
+    }
+  }
+
   async function analyze(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -292,7 +343,7 @@ function Explorer() {
                 {result.bug_findings.length ? (
                   <div className="max-h-80 space-y-2 overflow-auto">
                     {result.bug_findings.map((finding) => (
-                      <button key={finding.id} onClick={() => { void openSource(finding.path); }} className="block w-full rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:border-indigo-400/30">
+                      <div key={finding.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-semibold text-slate-200">{finding.title}</span>
                           <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase ${finding.severity === "high" ? "bg-rose-400/10 text-rose-300" : finding.severity === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-slate-400/10 text-slate-300"}`}>{finding.severity}</span>
@@ -300,7 +351,16 @@ function Explorer() {
                         <div className="mt-1 truncate text-[10px] text-slate-500">{finding.path}:{finding.line}</div>
                         <p className="mt-2 text-xs leading-5 text-slate-400">{finding.message}</p>
                         <p className="mt-2 text-[11px] leading-5 text-indigo-200">Fix: {finding.recommendation}</p>
-                      </button>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button onClick={() => { void openSource(finding.path); }} className="rounded-lg border border-white/10 px-3 py-2 text-[11px] text-slate-300 hover:bg-white/5">Open file</button>
+                          <button disabled={bugAiLoadingId !== null} onClick={() => { void explainBug(finding); }} className="rounded-lg bg-indigo-500/15 px-3 py-2 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/25 disabled:opacity-50">
+                            {bugAiLoadingId === finding.id ? "Analyzing…" : "Explain with AI"}
+                          </button>
+                        </div>
+                        {bugAiFindingId === finding.id && bugAiLoadingId === finding.id && <p className="mt-2 text-[11px] text-indigo-300">{aiStatus}</p>}
+                        {bugAiFindingId === finding.id && bugAiError && <p role="alert" className="mt-2 text-[11px] text-rose-300">{bugAiError}</p>}
+                        {bugAiFindingId === finding.id && bugAiExplanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-5 text-slate-300">{bugAiExplanation}</div>}
+                      </div>
                     ))}
                   </div>
                 ) : <p className="text-xs leading-5 text-slate-400">No supported risky patterns found in the scanned files.</p>}
@@ -322,7 +382,8 @@ function Explorer() {
                   <div className="border-b border-white/10 px-3 py-2 text-[10px] text-slate-500">{source.path}{source.truncated ? " · preview truncated" : ""}</div>
                   <pre className="max-h-72 overflow-auto p-3 text-[11px] leading-5 text-slate-300"><code>{source.content}</code></pre>
                 </div>}
-                {aiLoading && <p className="mt-3 text-xs text-indigo-300">{aiStatus || "Preparing local AI…"}</p>}\n                {!aiLoading && aiStatus && <p className="mt-3 text-xs text-emerald-300">{aiStatus}</p>}
+                {aiLoading && <p className="mt-3 text-xs text-indigo-300">{aiStatus || "Preparing local AI…"}</p>}
+                {!aiLoading && aiStatus && <p className="mt-3 text-xs text-emerald-300">{aiStatus}</p>}
                 {aiError && <p role="alert" className="mt-3 text-xs text-rose-300">{aiError}</p>}
                 {explanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-6 text-slate-300">{explanation}</div>}
               </div>}
