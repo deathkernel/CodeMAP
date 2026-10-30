@@ -131,6 +131,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
         "default_branch": "Local folder",
         **graph,
         "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
+        "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
         "bug_findings": bug_report["findings"],
         "bug_stats": bug_report["stats"],
         "bug_analysis_note": bug_report["note"],
