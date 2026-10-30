@@ -3,10 +3,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routes.repository import router as repository_router
+
 app = FastAPI(
     title="CodeMap API",
     description="Local-first codebase intelligence API.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -16,6 +18,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+app.include_router(repository_router)
 
 
 @app.get("/api/health", tags=["system"])
