@@ -1,0 +1,36 @@
+from app.services.bug_detector import scan_for_bugs
+
+
+def test_detects_python_dynamic_execution() -> None:
+    result = scan_for_bugs({"app.py": "value = eval(user_input)\n"})
+    assert result["stats"]["total"] == 1
+    assert result["findings"][0]["rule_id"] == "dynamic-code-execution"
+    assert result["findings"][0]["line"] == 1
+
+
+def test_detects_mutable_default_argument() -> None:
+    result = scan_for_bugs({"app.py": "def add_item(item, values=[]):\n    values.append(item)\n"})
+    assert any(item["rule_id"] == "mutable-default-argument" for item in result["findings"])
+
+
+def test_detects_swallowed_exception() -> None:
+    result = scan_for_bugs({"app.py": "try:\n    run()\nexcept Exception:\n    pass\n"})
+    assert any(item["rule_id"] == "swallowed-exception" for item in result["findings"])
+
+
+def test_detects_shell_true() -> None:
+    source = "import subprocess\nsubprocess.run(command, shell=True)\n"
+    result = scan_for_bugs({"app.py": source})
+    assert any(item["rule_id"] == "subprocess-shell-true" for item in result["findings"])
+
+
+def test_secret_value_is_never_returned() -> None:
+    secret = "sk_live_12345678901234567890"
+    result = scan_for_bugs({"settings.py": f'api_key = "{secret}"\n'})
+    assert any(item["rule_id"] == "possible-hardcoded-secret" for item in result["findings"])
+    assert secret not in str(result)
+
+
+def test_invalid_python_is_skipped_without_execution() -> None:
+    result = scan_for_bugs({"broken.py": "this is not valid python !!!"})
+    assert result["findings"] == []

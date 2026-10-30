@@ -276,6 +276,33 @@ function Explorer() {
                   <Metric label="Not fetched" value={result.stats.files_not_fetched} />
                 </div>
               </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><Bug size={16} className="text-amber-300" /> Static bug scan</div>
+                  <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-slate-300">{result.bug_stats.total} findings</span>
+                </div>
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  <Metric label="High" value={result.bug_stats.by_severity.high} />
+                  <Metric label="Medium" value={result.bug_stats.by_severity.medium} />
+                  <Metric label="Low" value={result.bug_stats.by_severity.low} />
+                </div>
+                {result.bug_findings.length ? (
+                  <div className="max-h-80 space-y-2 overflow-auto">
+                    {result.bug_findings.map((finding) => (
+                      <button key={finding.id} onClick={() => { void openSource(finding.path); }} className="block w-full rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:border-indigo-400/30">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-200">{finding.title}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase ${finding.severity === "high" ? "bg-rose-400/10 text-rose-300" : finding.severity === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-slate-400/10 text-slate-300"}`}>{finding.severity}</span>
+                        </div>
+                        <div className="mt-1 truncate text-[10px] text-slate-500">{finding.path}:{finding.line}</div>
+                        <p className="mt-2 text-xs leading-5 text-slate-400">{finding.message}</p>
+                        <p className="mt-2 text-[11px] leading-5 text-indigo-200">Fix: {finding.recommendation}</p>
+                      </button>
+                    ))}
+                  </div>
+                ) : <p className="text-xs leading-5 text-slate-400">No supported risky patterns found in the scanned files.</p>}
+                <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.bug_analysis_note}</p>
+              </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Search size={15} /> File explorer</div>
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter files..." className="mb-3 h-9 w-full rounded-lg border border-white/10 bg-black/20 px-3 text-xs outline-none" />
