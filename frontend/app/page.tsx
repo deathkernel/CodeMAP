@@ -76,6 +76,11 @@ function buildFileTree(nodes: AnalysisResult["nodes"]): FileTreeItem[] {
   return root.children;
 }
 
+function hasTreeMatch(item: FileTreeItem, query: string): boolean {
+  if (!query || item.path.toLowerCase().includes(query.toLowerCase())) return true;
+  return item.children.some((child) => hasTreeMatch(child, query));
+}
+
 function getFileIcon(path: string) {
   const extension = path.split(".").pop()?.toLowerCase();
   if (["json", "jsonc"].includes(extension || "")) return FileJson;
@@ -154,10 +159,6 @@ function Explorer() {
   }, []);
 
   const fileTree = useMemo(() => buildFileTree(result?.nodes || []), [result]);
-  const visibleNodes = useMemo(
-    () => result?.nodes.filter((node) => node.path.toLowerCase().includes(query.toLowerCase())) ?? [],
-    [result, query],
-  );
   const graphNodes: Node[] = useMemo(() => {
     if (!result) return [];
     const positions = getGraphPositions(result);
@@ -407,11 +408,9 @@ function Explorer() {
 
   function renderTree(items: FileTreeItem[], depth = 0): React.ReactNode {
     return items.map((item) => {
-      const matches = !query || item.path.toLowerCase().includes(query.toLowerCase());
-      const matchingChildren = item.children.filter((child) => !query || child.path.toLowerCase().includes(query.toLowerCase()));
-      if (!matches && matchingChildren.length === 0) return null;
+      if (!hasTreeMatch(item, query)) return null;
       if (item.isFolder) {
-        const isExpanded = query ? true : Boolean(expandedFolders[item.path]);
+        const isExpanded = query ? true : (expandedFolders[item.path] ?? depth === 0);
         const FolderIcon = isExpanded ? FolderOpen : Folder;
         return (
           <div key={item.path}>
