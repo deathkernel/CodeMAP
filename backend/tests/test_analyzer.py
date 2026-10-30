@@ -34,8 +34,8 @@ def test_local_folder_analysis_builds_graph_and_bug_report() -> None:
     response = client.post("/api/repository/analyze-folder", json={
         "folder_name": "demo-app",
         "files": [
-            {"path": "app/main.py", "content": "from app import utils\\nvalue = eval('1')\\n"},
-            {"path": "app/utils.py", "content": "def helper():\\n    return True\\n"},
+            {"path": "app/main.py", "content": "from app import utils\nvalue = eval('1')\n"},
+            {"path": "app/utils.py", "content": "def helper():\n    return True\n"},
         ],
     })
     assert response.status_code == 200
