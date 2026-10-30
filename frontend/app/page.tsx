@@ -131,6 +131,8 @@ function Explorer() {
   const [localSources, setLocalSources] = useState<Record<string, string>>({});
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [showDisconnected, setShowDisconnected] = useState(false);
+  const [highlightDependencies, setHighlightDependencies] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
@@ -166,35 +168,67 @@ function Explorer() {
   }, []);
 
   const fileTree = useMemo(() => buildFileTree(result?.nodes || []), [result]);
+  const graphMetrics = useMemo(() => {
+    const degree = new Map<string, number>();
+    const adjacency = new Map<string, string[]>();
+    result?.nodes.forEach((node) => { degree.set(node.id, 0); adjacency.set(node.id, []); });
+    result?.edges.forEach((edge) => {
+      degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
+      degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
+      adjacency.get(edge.source)?.push(edge.target);
+    });
+    const disconnected = result?.nodes.filter((node) => (degree.get(node.id) || 0) === 0).map((node) => node.id) || [];
+    const important = [...degree.entries()].filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
+    const reachable = new Set<string>();
+    if (selected && adjacency.has(selected)) {
+      const queue = [...(adjacency.get(selected) || [])];
+      while (queue.length) {
+        const current = queue.shift()!;
+        if (reachable.has(current) || current === selected) continue;
+        reachable.add(current);
+        queue.push(...(adjacency.get(current) || []));
+      }
+      reachable.add(selected);
+    }
+    return { degree, disconnected, important, reachable };
+  }, [result, selected]);
+
   const graphNodes: Node[] = useMemo(() => {
     if (!result) return [];
     const positions = getGraphPositions(result);
-    const nodes = result.nodes.map((node) => ({
-      id: node.id,
-      position: positions.get(node.id) || { x: 0, y: 0 },
-      data: { label: (
-        <div className="min-w-40 rounded-xl border border-indigo-400/30 bg-[#111a2b] px-4 py-3 shadow-xl">
-          <div className="flex items-center gap-2 text-indigo-300"><FileCode2 size={15} /><span className="text-xs uppercase">{node.language}</span></div>
-          <div className="mt-2 max-w-48 truncate text-sm font-semibold text-slate-100">{node.label}</div>
-          <div className="mt-1 max-w-48 truncate text-[10px] text-slate-400">{node.path}</div>
-          <div className="mt-2 text-[10px] text-slate-500">{node.lines} lines</div>
-        </div>
-      ) },
-      style: { width: 205, border: "none", background: "transparent", padding: 0 },
-    }));
-    return nodes;
-  }, [result]);
+    return result.nodes.map((node) => {
+      const degree = graphMetrics.degree.get(node.id) || 0;
+      const disconnected = degree === 0;
+      const isImportant = graphMetrics.important.includes(node.id);
+      const inPath = !selected || !highlightDependencies || graphMetrics.reachable.has(node.id);
+      const borderClass = selected === node.id ? "border-indigo-300 bg-indigo-500/20" : disconnected ? "border-amber-400/30 bg-[#171827]" : isImportant ? "border-emerald-400/30 bg-[#10231f]" : "border-indigo-400/30 bg-[#111a2b]";
+      return {
+        id: node.id,
+        position: positions.get(node.id) || { x: 0, y: 0 },
+        data: { label: (
+          <div className={"min-w-40 rounded-xl border px-4 py-3 shadow-xl " + borderClass}>
+            <div className="flex items-center gap-2 text-indigo-300"><FileCode2 size={15} /><span className="text-xs uppercase">{node.language}</span>{isImportant && <span className="ml-auto text-[9px] text-emerald-300">CORE</span>}</div>
+            <div className="mt-2 max-w-48 truncate text-sm font-semibold text-slate-100">{node.label}</div>
+            <div className="mt-1 max-w-48 truncate text-[10px] text-slate-400">{node.path}</div>
+            <div className="mt-2 flex justify-between text-[10px] text-slate-500"><span>{node.lines} lines</span><span>{degree} links</span></div>
+            {disconnected && <div className="mt-1 text-[9px] text-amber-300">Disconnected</div>}
+          </div>
+        ) },
+        style: { width: 205, border: "none", background: "transparent", padding: 0, opacity: inPath ? 1 : 0.18 },
+      };
+    });
+  }, [result, graphMetrics, selected, highlightDependencies]);
+
   const graphEdges: Edge[] = useMemo(
-    () => result?.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      label: "imports",
-      animated: true,
-      style: { stroke: "#818cf8", strokeWidth: 1.5 },
-      labelStyle: { fill: "#a5b4fc", fontSize: 10 },
-    })) ?? [],
-    [result],
+    () => result?.edges.map((edge) => {
+      const active = !selected || !highlightDependencies || (graphMetrics.reachable.has(edge.source) && graphMetrics.reachable.has(edge.target));
+      return {
+        id: edge.id, source: edge.source, target: edge.target, label: "imports", animated: active,
+        style: { stroke: active ? "#818cf8" : "#334155", strokeWidth: active ? 1.8 : 1, opacity: active ? 1 : 0.15 },
+        labelStyle: { fill: "#a5b4fc", fontSize: 10 },
+      };
+    }) ?? [],
+    [result, graphMetrics, selected, highlightDependencies],
   );
 
   async function openSource(path: string) {
@@ -496,8 +530,13 @@ function Explorer() {
                 <div><div className="font-semibold">{result.repository}</div><div className="mt-1 text-xs text-slate-500">Branch: {result.default_branch}</div></div>
                 <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export Mermaid</button>
               </div>
+              <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3">
+                <span className="mr-auto text-[11px] text-slate-500">{graphMetrics.disconnected.length} disconnected · {graphMetrics.important.length} core candidates</span>
+                <button onClick={() => setHighlightDependencies((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (highlightDependencies ? "border-indigo-400/30 bg-indigo-500/10 text-indigo-200" : "border-white/10 text-slate-400")}>{highlightDependencies ? "Dependency path: on" : "Dependency path: off"}</button>
+                <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
+              </div>
               <div className="h-[620px]">
-                <ReactFlow nodes={graphNodes} edges={graphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
+                <ReactFlow nodes={showDisconnected ? graphNodes.filter((node) => graphMetrics.disconnected.includes(node.id)) : graphNodes} edges={showDisconnected ? [] : graphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
