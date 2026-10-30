@@ -37,12 +37,6 @@ type AnalysisResult = {
     dependency_depth: { max_depth: number; reachable_files: number; unreachable_files: number; deepest_files: string[] };
     code_intelligence_note: string;
   };
-  symbol_intelligence: {
-    symbols: Array<{ id: string; path: string; name: string; qualified_name: string; kind: "function" | "class"; line: number; end_line: number }>;
-    call_edges: Array<{ id: string; source_path: string; target_path: string; caller: string; callee: string; line: number; target_line: number }>;
-    symbol_stats: { symbols: number; functions: number; classes: number; resolved_call_links: number };
-    symbol_note: string;
-  };
   architecture_insights: {
     entry_points: Array<{ path: string; reason: string }>;
     circular_dependencies: string[][];
@@ -1009,35 +1003,6 @@ function Explorer() {
                   </div>
                 ) : <p className="text-xs leading-5 text-slate-400">No supported risky patterns found in the scanned files.</p>}
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.bug_analysis_note}</p>
-              </div>
-              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.035] p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm font-semibold"><Workflow size={15} className="text-cyan-300" /> Symbol intelligence</div>
-                  <span className="text-[10px] text-slate-500">{result.symbol_intelligence.symbol_stats.symbols} symbols</span>
-                </div>
-                <div className="mb-3 grid grid-cols-3 gap-2">
-                  <Metric label="Functions" value={result.symbol_intelligence.symbol_stats.functions} />
-                  <Metric label="Classes" value={result.symbol_intelligence.symbol_stats.classes} />
-                  <Metric label="Call links" value={result.symbol_intelligence.symbol_stats.resolved_call_links} />
-                </div>
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Functions & classes</div>
-                <div className="max-h-52 space-y-1 overflow-auto">
-                  {result.symbol_intelligence.symbols.length ? result.symbol_intelligence.symbols.slice(0, 80).map((symbol) => (
-                    <button key={symbol.id} onClick={() => { void openSource(symbol.path, symbol.line); }} className="flex w-full items-center justify-between gap-2 rounded-lg bg-black/20 px-3 py-2 text-left hover:bg-white/5">
-                      <span className="min-w-0"><span className="block truncate text-[11px] text-cyan-200">{symbol.qualified_name}</span><span className="block truncate text-[9px] text-slate-500">{symbol.path}</span></span>
-                      <span className="shrink-0 text-[9px] text-slate-500">{symbol.kind} · L{symbol.line}</span>
-                    </button>
-                  )) : <p className="text-xs text-slate-500">No supported symbols detected.</p>}
-                  {result.symbol_intelligence.symbols.length > 80 && <p className="text-[9px] text-slate-600">Showing first 80 symbols.</p>}
-                </div>
-                <div className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Resolved call links</div>
-                <div className="max-h-40 space-y-1 overflow-auto">
-                  {result.symbol_intelligence.call_edges.slice(0, 40).map((edge) => (
-                    <button key={edge.id} onClick={() => { void openSource(edge.source_path, edge.line); }} className="block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-[10px] text-slate-300 hover:text-cyan-200">{edge.caller} → {edge.callee} <span className="text-slate-600">· {edge.source_path}:{edge.line}</span></button>
-                  ))}
-                  {!result.symbol_intelligence.call_edges.length && <p className="text-xs text-slate-500">No unambiguous local call links found.</p>}
-                </div>
-                <p className="mt-3 text-[9px] leading-4 text-slate-600">{result.symbol_intelligence.symbol_note}</p>
               </div>
               <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/[0.035] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">

@@ -8,7 +8,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl, Field
 
-from app.services.analyzer import analyze_sources, architecture_insights, architecture_health, code_intelligence, symbol_intelligence
+from app.services.analyzer import analyze_sources, architecture_insights, architecture_health, code_intelligence
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 
@@ -78,12 +78,10 @@ async def analyze_github(request: AnalyzeRequest):
 
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
-    symbols = symbol_intelligence(sources)
     return {
         "repository": inventory["repository"],
         "default_branch": inventory["default_branch"],
         **graph,
-        "symbol_intelligence": symbols,
         "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
         "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
         "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),
@@ -129,12 +127,10 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
 
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
-    symbols = symbol_intelligence(sources)
     return {
         "repository": request.folder_name,
         "default_branch": "Local folder",
         **graph,
-        "symbol_intelligence": symbols,
         "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
         "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
         "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),

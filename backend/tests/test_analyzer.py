@@ -148,28 +148,3 @@ def test_local_folder_response_includes_architecture_health() -> None:
     payload = response.json()
     assert payload["architecture_health"]["health_stats"]["modules"] == 1
     assert "code_intelligence" in payload
-
-
-def test_symbol_intelligence_extracts_python_symbols_and_resolves_unique_calls() -> None:
-    from app.services.analyzer import symbol_intelligence
-
-    report = symbol_intelligence({
-        "app/main.py": "class Service:\n    def run(self):\n        helper()\n\ndef helper():\n    return 1\n",
-        "app/other.py": "def unrelated():\n    return 2\n",
-    })
-    names = {(item["name"], item["kind"]) for item in report["symbols"]}
-    assert ("Service", "class") in names
-    assert ("run", "function") in names
-    assert ("helper", "function") in names
-    assert report["symbol_stats"]["functions"] == 3
-    assert any(edge["callee"] == "helper" and edge["caller"] == "run" for edge in report["call_edges"])
-
-
-def test_symbol_intelligence_omits_ambiguous_call_targets() -> None:
-    from app.services.analyzer import symbol_intelligence
-
-    report = symbol_intelligence({
-        "a.py": "def helper():\n    return 1\n\ndef run():\n    helper()\n",
-        "b.py": "def helper():\n    return 2\n",
-    })
-    assert report["call_edges"] == []

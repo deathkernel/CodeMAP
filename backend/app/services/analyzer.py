@@ -328,14 +328,14 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
     declarations: list[dict[str, Any]] = []
     raw_calls: list[dict[str, Any]] = []
     js_declaration = re.compile(
-        r"^\\s*(?:(?:export|default|async|public|private|protected|static)\\s+)*"
-        r"(function|class)\\s+([A-Za-z_$][\\w$]*)"
+        r"^\s*(?:(?:export|default|async|public|private|protected|static)\s+)*"
+        r"(function|class)\s+([A-Za-z_$][\w$]*)"
     )
     js_variable = re.compile(
-        r"^\\s*(?:(?:export|default|async)\\s+)*(?:const|let|var)\\s+"
-        r"([A-Za-z_$][\\w$]*)\\s*=\\s*(?:async\\s*)?(?:function\\b|(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>)"
+        r"^\s*(?:(?:export|default|async)\s+)*(?:const|let|var)\s+"
+        r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"
     )
-    call_pattern = re.compile(r"\\b([A-Za-z_$][\\w$]*)\\s*\\(")
+    call_pattern = re.compile(r"\b([A-Za-z_$][\w$]*)\s*\(")
 
     for path, source in sorted(sources.items()):
         suffix = PurePosixPath(path).suffix.lower()
