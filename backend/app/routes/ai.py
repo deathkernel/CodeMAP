@@ -36,6 +36,9 @@ class ExplainBugRequest(BaseModel):
 def _settings() -> tuple[str, str]:
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
     model = os.getenv("OLLAMA_MODEL", DEFAULT_MODEL)
+    legacy_model = "hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Qwen3.5-9B-Q6_K.gguf"
+    if model == legacy_model:
+        model = DEFAULT_MODEL
     return base_url, model
 
 
