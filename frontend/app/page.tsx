@@ -327,6 +327,24 @@ function Explorer() {
     };
   }, [result, selected]);
 
+  const impactAnalysis = useMemo(() => {
+    if (!dependencyDrilldown) return null;
+    const affected = dependencyDrilldown.upstream;
+    const modules = new Map<string, string[]>();
+    affected.forEach(({ path }) => {
+      const parts = path.split("/");
+      const name = parts.length > 1 ? parts[0] : "(root)";
+      modules.set(name, [...(modules.get(name) || []), path]);
+    });
+    const affectedModules = [...modules.entries()]
+      .map(([name, paths]) => ({ name, paths }))
+      .sort((a, b) => b.paths.length - a.paths.length || a.name.localeCompare(b.name));
+    const radius = affected.length >= 20 || affectedModules.length >= 5 ? "high"
+      : affected.length >= 6 || affectedModules.length >= 3 ? "moderate"
+      : affected.length ? "low" : "none";
+    return { affected, affectedModules, radius };
+  }, [dependencyDrilldown]);
+
   async function openSource(path: string) {
     if (!result) return;
     setSelected(path);
@@ -774,6 +792,26 @@ function Explorer() {
                       <button key={path} onClick={() => { void openSource(path); }} className="mb-1 block w-full truncate rounded-lg bg-black/20 px-3 py-2 text-left text-[11px] text-emerald-200 hover:bg-white/5">{path}</button>
                     )) : <p className="text-xs text-slate-500">No analyzed files import this file.</p>}
                   </div>
+                  {impactAnalysis && (
+                    <div className="mb-4 rounded-xl border border-amber-400/15 bg-amber-400/[0.035] p-3">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-200">Change impact estimate</div>
+                        <span className="rounded-full bg-black/20 px-2 py-1 text-[9px] uppercase text-amber-200">{impactAnalysis.radius} impact</span>
+                      </div>
+                      <div className="mb-3 grid grid-cols-2 gap-2">
+                        <Metric label="Affected files" value={impactAnalysis.affected.length} />
+                        <Metric label="Affected modules" value={impactAnalysis.affectedModules.length} />
+                      </div>
+                      {impactAnalysis.affectedModules.length ? impactAnalysis.affectedModules.map((module) => (
+                        <div key={module.name} className="mb-2 rounded-lg bg-black/20 p-2">
+                          <div className="mb-1 flex justify-between gap-2 text-[11px]"><span className="truncate text-slate-200">{module.name}</span><span className="text-amber-200">{module.paths.length}</span></div>
+                          {module.paths.slice(0, 5).map((path) => <button key={path} onClick={() => { void openSource(path); }} className="mt-1 block w-full truncate text-left text-[10px] text-slate-400 hover:text-amber-200">{path}</button>)}
+                          {module.paths.length > 5 && <p className="mt-1 text-[9px] text-slate-600">+{module.paths.length - 5} more</p>}
+                        </div>
+                      )) : <p className="text-xs text-slate-500">No other analyzed files depend on this file.</p>}
+                      <p className="mt-2 text-[9px] leading-4 text-slate-600">Estimated from reverse import links only; dynamic/runtime effects may be missing.</p>
+                    </div>
+                  )}
                   <div className="mb-3">
                     <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Dependency paths · downstream</div>
                     {dependencyDrilldown.downstream.length ? dependencyDrilldown.downstream.slice(0, 12).map((item) => (
