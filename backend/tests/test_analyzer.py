@@ -58,3 +58,42 @@ def test_local_folder_analysis_rejects_oversized_file() -> None:
         "files": [{"path": "main.py", "content": "x" * (256 * 1024 + 1)}],
     })
     assert response.status_code == 413
+
+
+
+def test_architecture_insights_detect_entry_points_and_folder_groups() -> None:
+    from app.services.analyzer import architecture_insights
+
+    graph = analyze_sources({
+        "src/main.py": "from src import service",
+        "src/service.py": "def run(): return True",
+        "README.md": "demo",
+        "tests/test_app.py": "pass",
+    })
+    insights = architecture_insights(graph["nodes"], graph["edges"])
+    assert insights["entry_points"][0]["path"] == "src/main.py"
+    assert {item["name"]: item["files"] for item in insights["module_groups"]} == {
+        "src": 2, "tests": 1, "(root)": 1
+    }
+
+
+def test_architecture_insights_detect_circular_imports() -> None:
+    from app.services.analyzer import architecture_insights
+
+    graph = analyze_sources({
+        "app/a.py": "from . import b",
+        "app/b.py": "from . import a",
+        "app/c.py": "value = 1",
+    })
+    insights = architecture_insights(graph["nodes"], graph["edges"])
+    assert insights["circular_dependencies"] == [["app/a.py", "app/b.py"]]
+
+
+def test_architecture_insights_handles_acyclic_graph() -> None:
+    from app.services.analyzer import architecture_insights
+
+    graph = analyze_sources({
+        "app/main.py": "from . import service",
+        "app/service.py": "value = 1",
+    })
+    assert architecture_insights(graph["nodes"], graph["edges"])["circular_dependencies"] == []

@@ -112,3 +112,81 @@ def analyze_sources(sources: dict[str, str], max_files: int = 300) -> dict[str, 
         },
         "analysis_note": "Static import analysis only; source code was not executed. External package imports are not graph edges.",
     }
+
+
+
+def architecture_insights(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize likely entry points, import cycles, and top-level modules."""
+    paths = [node["path"] for node in nodes]
+    known = set(paths)
+    entry_names = {
+        "__main__.py", "main.py", "app.py", "wsgi.py", "asgi.py",
+        "index.js", "index.jsx", "index.ts", "index.tsx",
+        "main.js", "main.jsx", "main.ts", "main.tsx",
+        "server.js", "server.ts", "cli.py",
+    }
+    entry_points = [
+        {"path": path, "reason": "Recognized application entry-point filename"}
+        for path in paths if PurePosixPath(path).name.lower() in entry_names
+    ]
+    adjacency: dict[str, list[str]] = {path: [] for path in known}
+    for edge in edges:
+        source, target = edge.get("source"), edge.get("target")
+        if source in known and target in known and target not in adjacency[source]:
+            adjacency[source].append(target)
+
+    # Tarjan strongly-connected components identify groups participating in cycles.
+    index = 0
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    indices: dict[str, int] = {}
+    lowlink: dict[str, int] = {}
+    cycles: list[list[str]] = []
+
+    def visit(node: str) -> None:
+        nonlocal index
+        indices[node] = lowlink[node] = index
+        index += 1
+        stack.append(node)
+        on_stack.add(node)
+        for target in adjacency[node]:
+            if target not in indices:
+                visit(target)
+                lowlink[node] = min(lowlink[node], lowlink[target])
+            elif target in on_stack:
+                lowlink[node] = min(lowlink[node], indices[target])
+        if lowlink[node] == indices[node]:
+            component: list[str] = []
+            while stack:
+                member = stack.pop()
+                on_stack.remove(member)
+                component.append(member)
+                if member == node:
+                    break
+            if len(component) > 1:
+                cycles.append(sorted(component))
+
+    for path in sorted(known):
+        if path not in indices:
+            visit(path)
+
+    groups: dict[str, int] = {}
+    for path in paths:
+        parts = PurePosixPath(path).parts
+        group = parts[0] if len(parts) > 1 else "(root)"
+        groups[group] = groups.get(group, 0) + 1
+
+    return {
+        "entry_points": entry_points,
+        "circular_dependencies": cycles,
+        "module_groups": [
+            {"name": name, "files": count}
+            for name, count in sorted(groups.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "architecture_stats": {
+            "entry_points": len(entry_points),
+            "circular_dependency_groups": len(cycles),
+            "top_level_modules": len(groups),
+        },
+        "architecture_note": "Entry points are filename-based candidates. Circular dependencies are detected only across locally resolved imports in the analyzed file set.",
+    }

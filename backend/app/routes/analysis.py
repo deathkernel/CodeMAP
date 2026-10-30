@@ -8,7 +8,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl, Field
 
-from app.services.analyzer import analyze_sources
+from app.services.analyzer import analyze_sources, architecture_insights
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 
@@ -82,6 +82,7 @@ async def analyze_github(request: AnalyzeRequest):
         "repository": inventory["repository"],
         "default_branch": inventory["default_branch"],
         **graph,
+        "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
         "bug_findings": bug_report["findings"],
         "bug_stats": bug_report["stats"],
         "bug_analysis_note": bug_report["note"],
@@ -128,6 +129,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
         "repository": request.folder_name,
         "default_branch": "Local folder",
         **graph,
+        "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
         "bug_findings": bug_report["findings"],
         "bug_stats": bug_report["stats"],
         "bug_analysis_note": bug_report["note"],
