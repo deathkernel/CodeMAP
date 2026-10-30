@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/ai", tags=["local-ai"])
@@ -32,15 +34,14 @@ async def _installed_models(client: httpx.AsyncClient, base_url: str) -> list[st
 
 
 def _has_model(models: list[str], model: str) -> bool:
-    return any(name == model or name.startswith(f"{model}:") for name in models)
+    return model in models
 
 
 async def _ensure_model(base_url: str, model: str) -> bool:
     """Pull the configured model if missing. Returns True when a download was started."""
     pull_timeout = httpx.Timeout(connect=10, read=None, write=30, pool=10)
     async with httpx.AsyncClient(timeout=pull_timeout, trust_env=False) as client:
-        models = await _installed_models(client, base_url)
-        if _has_model(models, model):
+        if _has_model(await _installed_models(client, base_url), model):
             return False
 
         async with client.stream(
@@ -52,15 +53,9 @@ async def _ensure_model(base_url: str, model: str) -> bool:
             async for line in response.aiter_lines():
                 if not line:
                     continue
-                try:
-                    progress = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+                progress = json.loads(line)
                 if progress.get("error"):
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Ollama could not download {model}: {progress['error']}",
-                    )
+                    raise HTTPException(status_code=502, detail=progress["error"])
     return True
 
 
@@ -83,6 +78,47 @@ async def ollama_status():
             "configured_model": model,
             "model_installed": False,
         }
+
+
+@router.post("/prepare")
+async def prepare_model():
+    """Stream real Ollama pull progress as newline-delimited JSON."""
+    base_url, model = _settings()
+
+    async def events() -> AsyncIterator[str]:
+        yield json.dumps({"status": "checking", "model": model}) + "\n"
+        try:
+            pull_timeout = httpx.Timeout(connect=10, read=None, write=30, pool=10)
+            async with httpx.AsyncClient(timeout=pull_timeout, trust_env=False) as client:
+                models = await _installed_models(client, base_url)
+                if _has_model(models, model):
+                    yield json.dumps({"status": "ready", "installed": True, "model": model}) + "\n"
+                    return
+
+                yield json.dumps({"status": "downloading", "model": model}) + "\n"
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/api/pull",
+                    json={"name": model, "stream": True},
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        progress = json.loads(line)
+                        if progress.get("error"):
+                            raise RuntimeError(progress["error"])
+                        yield json.dumps({
+                            "status": "downloading",
+                            "detail": progress.get("status", "Downloading model"),
+                            "completed": progress.get("completed"),
+                            "total": progress.get("total"),
+                        }) + "\n"
+            yield json.dumps({"status": "ready", "installed": False, "model": model}) + "\n"
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            yield json.dumps({"status": "error", "message": str(exc)}) + "\n"
+
+    return StreamingResponse(events(), media_type="application/x-ndjson")
 
 
 @router.post("/explain")

@@ -112,17 +112,51 @@ function Explorer() {
     } finally { setSourceLoading(false); }
   }
 
+  async function prepareModel() {
+    const response = await fetch(`${API_BASE}/api/ai/prepare`, { method: "POST" });
+    if (!response.ok || !response.body) throw new Error("Could not prepare the local Ollama model.");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.status === "checking") setAiStatus("Checking local model…");
+        if (event.status === "downloading") {
+          const percent = event.total && event.completed
+            ? Math.round((event.completed / event.total) * 100)
+            : null;
+          setAiStatus(percent === null
+            ? `Downloading Qwen3.5-9B: ${event.detail || "Preparing files"}…`
+            : `Downloading Qwen3.5-9B: ${percent}%`);
+        }
+        if (event.status === "error") throw new Error(event.message || "Model download failed.");
+        if (event.status === "ready") setAiStatus("Local model ready. Generating explanation…");
+      }
+    }
+  }
+
   async function explainSource() {
     if (!source || !selectedNode) return;
-    setAiLoading(true); setAiError(""); setExplanation(""); setAiStatus("Checking local Ollama model…");
+    setAiLoading(true); setAiError(""); setExplanation(""); setAiStatus("Preparing local AI…");
     try {
-      setAiStatus("If the model is missing, CodeMap will download it automatically. First download may take a few minutes…");\n      const response = await fetch(`${API_BASE}/api/ai/explain`, {
+      await prepareModel();
+      const response = await fetch(`${API_BASE}/api/ai/explain`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: source.path, language: selectedNode.language, code: source.content }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Ollama explanation failed.");
-      setExplanation(payload.explanation || "The model returned an empty explanation.");\n      setAiStatus(payload.downloaded ? "Model downloaded and explanation generated locally." : "Explanation generated locally.");
+      setExplanation(payload.explanation || "The model returned an empty explanation.");
+      setAiStatus("Explanation generated locally.");
     } catch (err) {
       setAiError(err instanceof Error ? err.message : "Could not reach local Ollama.");
     } finally { setAiLoading(false); }
