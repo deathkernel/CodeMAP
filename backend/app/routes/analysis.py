@@ -8,7 +8,7 @@ import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, HttpUrl, Field
 
-from app.services.analyzer import analyze_sources, architecture_insights, architecture_health, code_intelligence, symbol_intelligence
+from app.services.analyzer import analyze_sources, architecture_insights, architecture_health, code_intelligence, symbol_intelligence, advanced_architecture_intelligence
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
@@ -84,6 +84,7 @@ async def analyze_github(request: AnalyzeRequest):
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
     symbols = symbol_intelligence(sources)
+    advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
     return {
         "project_id": project_id,
         "indexed_chunks": indexed_chunks,
@@ -94,6 +95,7 @@ async def analyze_github(request: AnalyzeRequest):
         **graph,
         "symbol_intelligence": symbols,
         "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
+        "advanced_architecture": advanced_architecture,
         "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
         "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),
         "bug_findings": bug_report["findings"],
@@ -142,6 +144,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
     symbols = symbol_intelligence(sources)
+    advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
     return {
         "project_id": project_id,
         "indexed_chunks": indexed_chunks,
@@ -152,6 +155,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
         **graph,
         "symbol_intelligence": symbols,
         "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
+        "advanced_architecture": advanced_architecture,
         "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
         "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),
         "bug_findings": bug_report["findings"],
@@ -182,20 +186,22 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
         sources = archive["sources"]
         project_id = make_project_id(file.filename[:-4] or "Uploaded ZIP", "ZIP archive", sources)
         indexed_chunks = index_project_sources(project_id, sources)
-    indexed_embeddings = await index_project_embeddings(project_id)
+        indexed_embeddings = await index_project_embeddings(project_id)
         graph = analyze_sources(sources)
         bug_report = scan_for_bugs(sources)
         symbols = symbol_intelligence(sources)
+    advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
         return {
             "project_id": project_id,
             "indexed_chunks": indexed_chunks,
-        "indexed_embeddings": indexed_embeddings,
-        "semantic_index_available": indexed_embeddings > 0,
+            "indexed_embeddings": indexed_embeddings,
+            "semantic_index_available": indexed_embeddings > 0,
             "repository": file.filename[:-4] or "Uploaded ZIP",
             "default_branch": "ZIP archive",
             **graph,
             "symbol_intelligence": symbols,
             "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
+        "advanced_architecture": advanced_architecture,
             "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
             "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),
             "bug_findings": bug_report["findings"],
