@@ -129,8 +129,10 @@ async def export_architecture_pdf(request: ReportRequest):
     if entry_points:
         rows = [["Path", "Reason"]]
         rows.extend([
-            [Paragraph(escape(str(item.get("path", "")), styles["SmallCell"]),
-             Paragraph(escape(str(item.get("reason", item.get("framework", ""))), styles["SmallCell"]))]
+            [
+                Paragraph(escape(str(item.get("path", ""))), styles["SmallCell"]),
+                Paragraph(escape(str(item.get("reason", item.get("framework", "")))), styles["SmallCell"]),
+            ]
             for item in entry_points[:40]
         ])
         table = Table(rows, colWidths=[75 * mm, 100 * mm], repeatRows=1)
