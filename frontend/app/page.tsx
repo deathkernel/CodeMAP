@@ -193,6 +193,9 @@ function Explorer() {
   const [bugAiFindingId, setBugAiFindingId] = useState<string | null>(null);
   const [bugAiExplanation, setBugAiExplanation] = useState("");
   const [bugAiError, setBugAiError] = useState("");
+  const [architectureExplanation, setArchitectureExplanation] = useState("");
+  const [architectureAiLoading, setArchitectureAiLoading] = useState(false);
+  const [architectureAiError, setArchitectureAiError] = useState("");
   const [ollamaState, setOllamaState] = useState<"checking" | "ready" | "missing" | "offline">("checking");
 
   useEffect(() => {
@@ -517,6 +520,38 @@ function Explorer() {
       setBugAiError(err instanceof Error ? err.message : "Could not explain this finding.");
     } finally {
       setBugAiLoadingId(null);
+    }
+  }
+
+  async function explainArchitecture() {
+    if (!result) return;
+    setArchitectureAiLoading(true);
+    setArchitectureAiError("");
+    setArchitectureExplanation("");
+    setAiStatus("Preparing local AI…");
+    try {
+      await prepareModel();
+      const response = await fetch(`${API_BASE}/api/ai/explain-architecture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repository: result.repository,
+          stats: result.stats,
+          architecture_insights: result.architecture_insights,
+          architecture_health: result.architecture_health,
+          code_intelligence: result.code_intelligence,
+          symbol_stats: result.symbol_intelligence.symbol_stats,
+          bug_stats: result.bug_stats,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Architecture explanation failed.");
+      setArchitectureExplanation(payload.explanation || "The model returned an empty explanation.");
+      setAiStatus("Architecture explanation generated locally.");
+    } catch (err) {
+      setArchitectureAiError(err instanceof Error ? err.message : "Could not explain this architecture.");
+    } finally {
+      setArchitectureAiLoading(false);
     }
   }
 
@@ -927,7 +962,15 @@ function Explorer() {
                 </div>
               )}
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
-                <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-indigo-300" /> Architecture intelligence</div>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-indigo-300" /> Architecture intelligence</div>
+                  <button onClick={() => { void explainArchitecture(); }} disabled={architectureAiLoading}
+                    className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-[11px] font-medium text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-50">
+                    {architectureAiLoading ? "Explaining…" : "Explain architecture with AI"}
+                  </button>
+                </div>
+                {architectureAiError && <p role="alert" className="mb-3 rounded-lg border border-rose-400/20 bg-rose-400/5 p-2 text-xs text-rose-300">{architectureAiError}</p>}
+                {architectureExplanation && <div className="mb-4 whitespace-pre-wrap rounded-xl border border-indigo-400/20 bg-indigo-400/[0.05] p-3 text-xs leading-6 text-slate-300">{architectureExplanation}</div>}
                 <div className="mb-4 grid grid-cols-3 gap-2">
                   <Metric label="Entry points" value={result.architecture_insights.architecture_stats.entry_points} />
                   <Metric label="Cycles" value={result.architecture_insights.architecture_stats.circular_dependency_groups} />
