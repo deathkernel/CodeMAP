@@ -43,6 +43,74 @@ def _finding(
     }
 
 
+
+def _advanced_python_findings(path: str, tree: ast.AST) -> list[dict[str, Any]]:
+    """Find additional high-signal Python logic mistakes without executing code."""
+    findings: list[dict[str, Any]] = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            seen: dict[Any, int] = {}
+            for key in node.keys:
+                if not isinstance(key, ast.Constant):
+                    continue
+                try:
+                    hash(key.value)
+                except TypeError:
+                    continue
+                if key.value in seen:
+                    findings.append(_finding(
+                        path, key.lineno, "duplicate-dictionary-key",
+                        "Duplicate dictionary key", "medium",
+                        "A dictionary literal defines the same constant key more than once; the later value silently replaces the earlier one.",
+                        "Remove the duplicate key or combine the values intentionally.",
+                    ))
+                else:
+                    seen[key.value] = key.lineno
+
+        if isinstance(node, ast.Compare):
+            operands = [node.left, *node.comparators]
+            for index, operator in enumerate(node.ops):
+                if not isinstance(operator, (ast.Is, ast.IsNot)):
+                    continue
+                left, right = operands[index], operands[index + 1]
+                literal = right if isinstance(right, ast.Constant) else left
+                if isinstance(literal, ast.Constant) and literal.value is not None:
+                    findings.append(_finding(
+                        path, node.lineno, "identity-comparison-literal",
+                        "Identity comparison with a literal", "medium",
+                        "The is operator checks object identity, not value equality; using it with a non-None literal is usually unintended.",
+                        "Use == or != for value comparison. Keep is None checks as they are.",
+                    ))
+                    break
+
+        if isinstance(node, ast.Try) and node.finalbody:
+            if any(isinstance(child, ast.Return) for statement in node.finalbody for child in ast.walk(statement)):
+                findings.append(_finding(
+                    path, node.lineno, "return-in-finally",
+                    "Return inside finally block", "high",
+                    "A return from a finally block can override an earlier return value or suppress an active exception.",
+                    "Move the return outside finally; use finally only for cleanup.",
+                ))
+
+        for field_name, value in ast.iter_fields(node):
+            if not isinstance(value, list) or not value or not all(isinstance(item, ast.stmt) for item in value):
+                continue
+            terminal_seen = False
+            for statement in value:
+                if terminal_seen:
+                    findings.append(_finding(
+                        path, statement.lineno, "unreachable-statement",
+                        "Potentially unreachable statement", "medium",
+                        "This statement follows an unconditional return, raise, break, or continue in the same block.",
+                        "Remove the dead statement or correct the preceding control flow.",
+                    ))
+                if isinstance(statement, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
+                    terminal_seen = True
+
+    return findings
+
+
 def _python_findings(path: str, source: str) -> list[dict[str, Any]]:
     try:
         tree = ast.parse(source)
@@ -127,6 +195,7 @@ def _python_findings(path: str, source: str) -> list[dict[str, Any]]:
                         "Pass an argument list and keep shell=False. Validate any external input.",
                     ))
 
+    findings.extend(_advanced_python_findings(path, tree))
     return findings
 
 
