@@ -61,16 +61,13 @@ CodeMAP/
 
 ## Development status
 
-This is the Phase 1 repository foundation. The analysis pipeline and UI are being built incrementally.
+Core workflows are implemented: GitHub/local-folder/ZIP ingestion, dependency visualization, architecture and static-issue analysis, local Ollama explanations, and project-scoped codebase Q&A. Backend tests and the frontend production build are being validated through GitHub Actions.
 
-## Planned milestones
+## Next improvements
 
-1. Foundation: API skeleton, configuration, health check, dashboard shell.
-2. Ingestion: validated GitHub URL and safe ZIP upload.
-3. Analysis: source inventory, imports and dependency graph.
-4. Visualization: interactive architecture and dependency explorer.
-5. Local AI: Ollama explanations and contextual analysis.
-6. Findings: static checks and AI-assisted potential bug explanations.
+- Add semantic embedding-based retrieval when a suitable local embedding model is selected; current SQLite FTS5/BM25 retrieval is keyword-based.
+- Expand language-specific static checks and parser coverage.
+- Improve incremental indexing and performance on very large repositories.
 
 ## Local setup
 
