@@ -5,14 +5,14 @@ import base64
 import binascii
 
 import httpx
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from pydantic import BaseModel, HttpUrl, Field
 
 from app.services.analyzer import analyze_sources, architecture_insights, architecture_health, code_intelligence, symbol_intelligence, advanced_architecture_intelligence
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
-from app.services.code_index import delete_project_index, index_project_sources_incremental, index_project_embeddings, make_stable_project_id
+from app.services.code_index import delete_project_index, index_project_sources_incremental, make_stable_project_id, create_embedding_job, run_embedding_job, get_index_job, count_project_embeddings
 
 router = APIRouter(prefix="/api/repository", tags=["analysis"])
 MAX_ANALYZED_FILES = 1000
@@ -45,7 +45,7 @@ class FolderAnalyzeRequest(BaseModel):
 
 
 @router.post("/analyze")
-async def analyze_github(request: AnalyzeRequest):
+async def analyze_github(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     try:
         inventory = await scan_github_repository(str(request.url))
         owner, name = parse_github_url(str(request.url))
@@ -81,7 +81,10 @@ async def analyze_github(request: AnalyzeRequest):
     project_id = make_stable_project_id(inventory["repository"], inventory["default_branch"])
     index_update = index_project_sources_incremental(project_id, sources)
     indexed_chunks = index_update["indexed_chunks"]
-    indexed_embeddings = await index_project_embeddings(project_id)
+    embedding_job = create_embedding_job(project_id)
+    if embedding_job["created"]:
+        background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
+    indexed_embeddings = count_project_embeddings(project_id)
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
     symbols = symbol_intelligence(sources)
@@ -92,6 +95,7 @@ async def analyze_github(request: AnalyzeRequest):
         "index_update": index_update,
         "indexed_embeddings": indexed_embeddings,
         "semantic_index_available": indexed_embeddings > 0,
+        "embedding_job": {"job_id": embedding_job["job_id"], "status": embedding_job["status"]},
         "repository": inventory["repository"],
         "default_branch": inventory["default_branch"],
         **graph,
@@ -113,7 +117,7 @@ async def analyze_github(request: AnalyzeRequest):
 
 
 @router.post("/analyze-folder")
-async def analyze_local_folder(request: FolderAnalyzeRequest):
+async def analyze_local_folder(request: FolderAnalyzeRequest, background_tasks: BackgroundTasks):
     """Analyze browser-selected local folder contents without extracting or executing files."""
     from pathlib import PurePosixPath
 
@@ -143,7 +147,10 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
     project_id = make_stable_project_id(request.folder_name, "Local folder")
     index_update = index_project_sources_incremental(project_id, sources)
     indexed_chunks = index_update["indexed_chunks"]
-    indexed_embeddings = await index_project_embeddings(project_id)
+    embedding_job = create_embedding_job(project_id)
+    if embedding_job["created"]:
+        background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
+    indexed_embeddings = count_project_embeddings(project_id)
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
     symbols = symbol_intelligence(sources)
@@ -175,7 +182,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
 
 
 @router.post("/analyze-zip")
-async def analyze_zip_upload(file: UploadFile = File(...)):
+async def analyze_zip_upload(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """Analyze supported source files from a ZIP entirely in memory."""
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Upload a .zip file.")
@@ -190,7 +197,10 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
         project_id = make_stable_project_id(file.filename[:-4] or "Uploaded ZIP", "ZIP archive")
         index_update = index_project_sources_incremental(project_id, sources)
         indexed_chunks = index_update["indexed_chunks"]
-        indexed_embeddings = await index_project_embeddings(project_id)
+        embedding_job = create_embedding_job(project_id)
+    if embedding_job["created"]:
+        background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
+    indexed_embeddings = count_project_embeddings(project_id)
         graph = analyze_sources(sources)
         bug_report = scan_for_bugs(sources)
         symbols = symbol_intelligence(sources)
@@ -201,6 +211,7 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
             "index_update": index_update,
             "indexed_embeddings": indexed_embeddings,
             "semantic_index_available": indexed_embeddings > 0,
+            "embedding_job": {"job_id": embedding_job["job_id"], "status": embedding_job["status"]},
             "repository": file.filename[:-4] or "Uploaded ZIP",
             "default_branch": "ZIP archive",
             **graph,
@@ -230,6 +241,20 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         await file.close()
+
+
+
+@router.get("/jobs/{job_id}")
+async def get_background_job(job_id: str):
+    """Read the status of a persisted background indexing job."""
+    import re
+
+    if not re.fullmatch(r"[a-f0-9]{32}", job_id):
+        raise HTTPException(status_code=400, detail="Invalid background job identifier.")
+    job = get_index_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Background job not found.")
+    return job
 
 
 
