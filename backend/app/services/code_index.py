@@ -694,6 +694,11 @@ def delete_project_index(project_id: str) -> int:
         ).fetchone()
         if bug_cache_exists:
             connection.execute("DELETE FROM code_bug_findings WHERE project_id = ?", (project_id,))
+        graph_cache_exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'code_graph_file_cache'"
+        ).fetchone()
+        if graph_cache_exists:
+            connection.execute("DELETE FROM code_graph_file_cache WHERE project_id = ?", (project_id,))
         connection.commit()
         return cursor.rowcount
     finally:
