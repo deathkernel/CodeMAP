@@ -12,12 +12,12 @@ from app.services.analyzer import analyze_sources, architecture_insights, archit
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
-from app.services.code_index import delete_project_index, index_project_sources, index_project_embeddings, make_project_id
+from app.services.code_index import delete_project_index, index_project_sources_incremental, index_project_embeddings, make_stable_project_id
 
 router = APIRouter(prefix="/api/repository", tags=["analysis"])
-MAX_ANALYZED_FILES = 120
+MAX_ANALYZED_FILES = 1000
 MAX_FOLDER_FILE_BYTES = 256 * 1024
-MAX_FOLDER_TOTAL_BYTES = 8 * 1024 * 1024
+MAX_FOLDER_TOTAL_BYTES = 64 * 1024 * 1024
 FOLDER_SOURCE_SUFFIXES = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".java", ".go",
     ".rs", ".c", ".h", ".cpp", ".cs", ".php", ".rb", ".swift", ".kt",
@@ -78,8 +78,9 @@ async def analyze_github(request: AnalyzeRequest):
             except (binascii.Error, ValueError):
                 continue
 
-    project_id = make_project_id(inventory["repository"], inventory["default_branch"], sources)
-    indexed_chunks = index_project_sources(project_id, sources)
+    project_id = make_stable_project_id(inventory["repository"], inventory["default_branch"])
+    index_update = index_project_sources_incremental(project_id, sources)
+    indexed_chunks = index_update["indexed_chunks"]
     indexed_embeddings = await index_project_embeddings(project_id)
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
@@ -88,6 +89,7 @@ async def analyze_github(request: AnalyzeRequest):
     return {
         "project_id": project_id,
         "indexed_chunks": indexed_chunks,
+        "index_update": index_update,
         "indexed_embeddings": indexed_embeddings,
         "semantic_index_available": indexed_embeddings > 0,
         "repository": inventory["repository"],
@@ -138,8 +140,9 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
     if not sources:
         raise HTTPException(status_code=400, detail="No supported source files were found in this folder.")
 
-    project_id = make_project_id(request.folder_name, "Local folder", sources)
-    indexed_chunks = index_project_sources(project_id, sources)
+    project_id = make_stable_project_id(request.folder_name, "Local folder")
+    index_update = index_project_sources_incremental(project_id, sources)
+    indexed_chunks = index_update["indexed_chunks"]
     indexed_embeddings = await index_project_embeddings(project_id)
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
@@ -184,8 +187,9 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
 
         archive = read_zip_sources(data)
         sources = archive["sources"]
-        project_id = make_project_id(file.filename[:-4] or "Uploaded ZIP", "ZIP archive", sources)
-        indexed_chunks = index_project_sources(project_id, sources)
+        project_id = make_stable_project_id(file.filename[:-4] or "Uploaded ZIP", "ZIP archive")
+        index_update = index_project_sources_incremental(project_id, sources)
+        indexed_chunks = index_update["indexed_chunks"]
         indexed_embeddings = await index_project_embeddings(project_id)
         graph = analyze_sources(sources)
         bug_report = scan_for_bugs(sources)
@@ -194,6 +198,7 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
         return {
             "project_id": project_id,
             "indexed_chunks": indexed_chunks,
+            "index_update": index_update,
             "indexed_embeddings": indexed_embeddings,
             "semantic_index_available": indexed_embeddings > 0,
             "repository": file.filename[:-4] or "Uploaded ZIP",
