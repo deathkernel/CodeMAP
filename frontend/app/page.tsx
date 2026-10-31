@@ -833,10 +833,12 @@ function Explorer() {
     setReportError("");
     setReportStatus("Generating PDF report…");
     try {
+      const reportResult = { ...result } as AnalysisResult & { source_contents?: unknown };
+      delete reportResult.source_contents;
       const response = await fetch(`${API_BASE}/api/reports/architecture.pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ result }),
+        body: JSON.stringify({ result: reportResult }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -861,10 +863,12 @@ function Explorer() {
     setReportError("");
     setReportStatus("Saving analysis snapshot…");
     try {
+      const reportResult = { ...result } as AnalysisResult & { source_contents?: unknown };
+      delete reportResult.source_contents;
       const response = await fetch(`${API_BASE}/api/reports/snapshots`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ result }),
+        body: JSON.stringify({ result: reportResult }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Could not save snapshot.");
