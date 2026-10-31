@@ -12,7 +12,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import {
   ArrowRight, Boxes, Bug, ChevronDown, ChevronRight, Code2, FileCode2,
-  FileJson, FileText, Folder, FolderOpen, Github, LoaderCircle,
+  FileArchive, FileJson, FileText, Folder, FolderOpen, Github, LoaderCircle,
   Network, Search, ShieldCheck, Sparkles, Workflow,
 } from "lucide-react";
 
@@ -544,6 +544,46 @@ function Explorer() {
   }
 
 
+  async function analyzeZip(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      setError("Please select a .zip archive.");
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setError("ZIP exceeds the 50 MB upload limit.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setResult(null);
+    setLocalSources({});
+    setUrl("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch(`${API_BASE}/api/repository/analyze-zip`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "ZIP analysis failed.");
+      setLocalSources(payload.source_contents || {});
+      setResult(payload);
+      setExpandedFolders({});
+      setSelected(null);
+      setSource(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not analyze this ZIP archive.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function analyzeFolder(event: React.ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(event.target.files || []);
     event.target.value = "";
@@ -764,6 +804,10 @@ function Explorer() {
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-5 py-3 text-sm font-semibold text-indigo-200 transition hover:bg-indigo-500/20">
             <FolderOpen size={17} /> Select project folder
             <input type="file" multiple onChange={analyzeFolder} className="hidden" {...({ webkitdirectory: "" } as React.InputHTMLAttributes<HTMLInputElement> & { webkitdirectory: string })} />
+          </label>
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-5 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/20">
+            <FileArchive size={17} /> Upload ZIP
+            <input type="file" accept=".zip,application/zip" onChange={analyzeZip} className="hidden" />
           </label>
         </div>
         {error && <p role="alert" className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-300">{error}</p>}
