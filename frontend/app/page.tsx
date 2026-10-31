@@ -1201,6 +1201,7 @@ function Explorer() {
                   </div>
                 </div>
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.architecture_insights.architecture_note}</p>
+                <p className="mt-2 text-[10px] leading-4 text-slate-600">{result.advanced_architecture.note}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
