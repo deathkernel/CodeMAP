@@ -68,6 +68,10 @@ npm run dev
 
 Frontend: http://localhost:3000
 
+## Local code retrieval index
+
+When a repository, folder, or ZIP is analyzed, CodeMap stores bounded source chunks in the local SQLite database configured by `CODEMAP_DATABASE_URL` (default: `./data/codemap.db`, relative to the backend working directory). Codebase Q&A retrieves relevant chunks locally with SQLite FTS5/BM25; a SQLite text-search fallback is used if FTS5 is unavailable. This is keyword retrieval, not semantic vector embeddings. Use **Clear index** in the project Q&A panel to remove that project’s stored chunks. The database and `data/` directory are excluded from Git.
+
 ## Safety notes
 
 Never run code from an uploaded repository. ZIP extraction must validate every resolved path remains inside the extraction directory, reject symlinks, and enforce compressed and uncompressed size/count limits. Do not expose uploaded source files to public static hosting. AI prompts and source snippets are sent only to the configured local Ollama endpoint; no hosted AI provider is configured.
