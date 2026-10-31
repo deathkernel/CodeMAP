@@ -276,6 +276,7 @@ def index_project_sources_incremental(
     table = "code_chunks" if has_fts else "code_chunks_plain"
     try:
         _ensure_file_manifest(connection)
+        _ensure_embedding_table(connection)
         existing_rows = connection.execute(
             "SELECT path, content_hash FROM code_index_files WHERE project_id = ?",
             (project_id,),
@@ -477,7 +478,16 @@ async def index_project_embeddings(project_id: str, batch_size: int = 24) -> int
             stored += len(payload)
         finally:
             connection.close()
-    return stored
+    connection, _ = _connect()
+    try:
+        _ensure_embedding_table(connection)
+        total = connection.execute(
+            "SELECT COUNT(*) FROM code_embeddings WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()[0]
+        return total
+    finally:
+        connection.close()
 
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:
