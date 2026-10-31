@@ -136,9 +136,114 @@ def _python_chunks(source: str):
     yield from ranges
 
 
+
+JS_DEFINITION_PATTERN = re.compile(
+    r"^\s*(?:(?:export|default|declare|abstract|async)\s+)*(?:"
+    r"(?:function|class)\s+[A-Za-z_$][\w$]*|"
+    r"(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?(?:function\b|\([^;\n]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"
+    r")",
+)
+
+
+def _matching_brace(source: str, opening: int) -> int | None:
+    """Find a matching brace while ignoring braces inside strings and comments."""
+    depth = 0
+    state = "code"
+    quote = ""
+    index = opening
+
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+
+        if state == "line_comment":
+            if char == "\n":
+                state = "code"
+        elif state == "block_comment":
+            if char == "*" and next_char == "/":
+                state = "code"
+                index += 1
+        elif state == "string":
+            if char == "\\":
+                index += 1
+            elif char == quote:
+                state = "code"
+        elif state == "template":
+            if char == "\\":
+                index += 1
+            elif ord(char) == 96:
+                state = "code"
+        else:
+            if char == "/" and next_char == "/":
+                state = "line_comment"
+                index += 1
+            elif char == "/" and next_char == "*":
+                state = "block_comment"
+                index += 1
+            elif char in {"'", '"'}:
+                state = "string"
+                quote = char
+            elif ord(char) == 96:
+                state = "template"
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return index
+        index += 1
+
+    return None
+
+
+def _javascript_chunks(source: str):
+    """Prefer top-level JS/TS function and class declarations as retrieval units."""
+    definitions: list[tuple[int, int]] = []
+    offset = 0
+
+    for line in source.splitlines(keepends=True):
+        if JS_DEFINITION_PATTERN.match(line):
+            search_end = min(len(source), offset + 5000)
+            opening = source.find("{", offset, search_end)
+            if opening >= 0:
+                closing = _matching_brace(source, opening)
+                if closing is not None:
+                    definitions.append((offset, closing + 1))
+        offset += len(line)
+
+    if not definitions:
+        yield from _text_chunks(source)
+        return
+
+    ranges: list[tuple[int, str]] = []
+    cursor = 0
+    for start, end in sorted(set(definitions)):
+        if start < cursor:
+            continue
+        gap = source[cursor:start].strip()
+        if gap:
+            ranges.extend(_line_ranges(gap, source.count("\n", 0, cursor) + 1))
+        body = source[start:end].strip()
+        if body:
+            ranges.extend(_line_ranges(body, source.count("\n", 0, start) + 1))
+        cursor = end
+
+    tail = source[cursor:].strip()
+    if tail:
+        ranges.extend(_line_ranges(tail, source.count("\n", 0, cursor) + 1))
+
+    if not ranges:
+        yield from _text_chunks(source)
+        return
+    yield from ranges
+
+
 def _chunks(source: str, path: str):
-    if path.lower().endswith(".py"):
+    suffix = path.lower().rsplit(".", 1)[-1] if "." in path else ""
+    if suffix == "py":
         yield from _python_chunks(source)
+    elif suffix in {"js", "jsx", "ts", "tsx", "mjs", "cjs"}:
+        yield from _javascript_chunks(source)
     else:
         yield from _text_chunks(source)
 
