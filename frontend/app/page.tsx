@@ -666,6 +666,9 @@ function Explorer() {
     setLoading(true);
     setError("");
     setResult(null);
+    setCodebaseAnswer("");
+    setCodebaseSources([]);
+    setCodebaseError("");
     try {
       const response = await fetch(`${API_BASE}/api/repository/analyze`, {
         method: "POST",
@@ -702,6 +705,9 @@ function Explorer() {
     setError("");
     setResult(null);
     setLocalSources({});
+    setCodebaseAnswer("");
+    setCodebaseSources([]);
+    setCodebaseError("");
     setUrl("");
 
     try {
@@ -734,6 +740,9 @@ function Explorer() {
     setError("");
     setResult(null);
     setLocalSources({});
+    setCodebaseAnswer("");
+    setCodebaseSources([]);
+    setCodebaseError("");
     setUrl("");
 
     try {
@@ -1013,10 +1022,10 @@ function Explorer() {
                     placeholder="How does authentication work? Where is the database connection created?"
                     rows={3} maxLength={2000}
                     className="w-full resize-y rounded-lg border border-white/10 bg-[#080d17] p-3 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-cyan-400/40" />
-                  <button disabled={codebaseLoading || !codebaseQuestion.trim()}
+                  <button disabled={codebaseLoading || !codebaseQuestion.trim() || result.indexed_chunks === 0}
                     className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-50">
                     {codebaseLoading ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    {codebaseLoading ? "Searching and thinking…" : "Ask local codebase"}
+                    {codebaseLoading ? "Searching and thinking…" : result.indexed_chunks === 0 ? "Re-analyze to enable Q&A" : "Ask local codebase"}
                   </button>
                 </form>
                 {codebaseError && <p role="alert" className="mt-3 rounded-lg border border-rose-400/20 bg-rose-400/5 p-2 text-xs text-rose-300">{codebaseError}</p>}
