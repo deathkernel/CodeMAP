@@ -58,8 +58,8 @@ def test_zip_source_loader_reads_supported_files_in_memory() -> None:
 def test_zip_analysis_endpoint_builds_graph_and_bug_report() -> None:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
-        archive.writestr("app/main.py", "from app import helper\\nvalue = eval('1')\\n")
-        archive.writestr("app/helper.py", "def run():\\n    return True\\n")
+        archive.writestr("app/main.py", "from app import helper\nvalue = eval('1')\n")
+        archive.writestr("app/helper.py", "def run():\n    return True\n")
 
     response = client.post(
         "/api/repository/analyze-zip",
