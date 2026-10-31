@@ -49,6 +49,15 @@ type AnalysisResult = {
     symbol_stats: { symbols: number; functions: number; classes: number; resolved_call_links: number; inheritance_links: number; dead_function_candidates: number; duplicate_function_groups: number };
     symbol_note: string;
   };
+  advanced_architecture: {
+    frameworks: string[];
+    entry_points: Array<{ path: string; framework: string; reason: string }>;
+    api_endpoints: Array<{ path: string; line: number; method: string; route: string; framework: string }>;
+    database_relations: Array<{ path: string; line: number; source_model: string; target: string; kind: string }>;
+    module_dependencies: Array<{ source: string; target: string; imports: number }>;
+    stats: { frameworks_detected: number; entry_points: number; api_endpoints: number; database_relations: number; cross_module_links: number };
+    note: string;
+  };
   architecture_insights: {
     entry_points: Array<{ path: string; reason: string }>;
     circular_dependencies: string[][];
@@ -598,6 +607,7 @@ function Explorer() {
           repository: result.repository,
           stats: result.stats,
           architecture_insights: result.architecture_insights,
+          advanced_architecture: result.advanced_architecture,
           architecture_health: result.architecture_health,
           code_intelligence: result.code_intelligence,
           symbol_stats: result.symbol_intelligence.symbol_stats,
@@ -1116,6 +1126,48 @@ function Explorer() {
                   <Metric label="Entry points" value={result.architecture_insights.architecture_stats.entry_points} />
                   <Metric label="Cycles" value={result.architecture_insights.architecture_stats.circular_dependency_groups} />
                   <Metric label="Modules" value={result.architecture_insights.architecture_stats.top_level_modules} />
+                </div>
+                <div className="mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Detected frameworks</div>
+                  <div className="flex flex-wrap gap-2">
+                    {result.advanced_architecture.frameworks.length ? result.advanced_architecture.frameworks.map((framework) => (
+                      <span key={framework} className="rounded-full border border-indigo-400/20 bg-indigo-400/10 px-2.5 py-1 text-[11px] text-indigo-200">{framework}</span>
+                    )) : <span className="text-xs text-slate-500">No supported framework detected from manifests.</span>}
+                  </div>
+                </div>
+                <div className="mb-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">API endpoints ({result.advanced_architecture.api_endpoints.length})</div>
+                    <div className="max-h-56 space-y-1 overflow-y-auto">
+                      {result.advanced_architecture.api_endpoints.length ? result.advanced_architecture.api_endpoints.map((endpoint) => (
+                        <button key={`${endpoint.path}:${endpoint.line}:${endpoint.method}:${endpoint.route}`} onClick={() => { void openSource(endpoint.path); }} className="block w-full rounded-lg bg-white/[0.03] px-2.5 py-2 text-left hover:bg-white/[0.07]">
+                          <span className="mr-2 rounded bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">{endpoint.method}</span>
+                          <span className="text-xs text-slate-200">{endpoint.route}</span>
+                          <span className="mt-1 block truncate text-[10px] text-slate-500">{endpoint.path}:{endpoint.line} · {endpoint.framework}</span>
+                        </button>
+                      )) : <p className="text-xs text-slate-500">No statically recognized API routes.</p>}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Database relationships ({result.advanced_architecture.database_relations.length})</div>
+                    <div className="max-h-56 space-y-1 overflow-y-auto">
+                      {result.advanced_architecture.database_relations.length ? result.advanced_architecture.database_relations.map((relation) => (
+                        <button key={`${relation.path}:${relation.line}:${relation.source_model}:${relation.target}`} onClick={() => { void openSource(relation.path); }} className="block w-full rounded-lg bg-white/[0.03] px-2.5 py-2 text-left hover:bg-white/[0.07]">
+                          <span className="text-xs text-slate-200">{relation.source_model} → {relation.target}</span>
+                          <span className="mt-1 block truncate text-[10px] text-slate-500">{relation.path}:{relation.line} · {relation.kind}</span>
+                        </button>
+                      )) : <p className="text-xs text-slate-500">No supported static relationship patterns found.</p>}
+                    </div>
+                  </div>
+                </div>
+                <div className="mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Cross-module dependencies ({result.advanced_architecture.module_dependencies.length})</div>
+                  {result.advanced_architecture.module_dependencies.length ? result.advanced_architecture.module_dependencies.slice(0, 10).map((dependency) => (
+                    <div key={`${dependency.source}:${dependency.target}`} className="flex items-center justify-between gap-3 border-b border-white/5 py-1.5 text-xs last:border-0">
+                      <span className="min-w-0 truncate text-slate-300">{dependency.source} → {dependency.target}</span>
+                      <span className="shrink-0 text-slate-500">{dependency.imports} imports</span>
+                    </div>
+                  )) : <p className="text-xs text-slate-500">No cross-module import links detected.</p>}
                 </div>
                 <div className="space-y-3">
                   <div>
