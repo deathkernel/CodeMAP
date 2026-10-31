@@ -763,7 +763,7 @@ function Explorer() {
         const suffixes = [".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".java", ".go", ".rs", ".c", ".h", ".cpp", ".cs", ".php", ".rb", ".swift", ".kt", ".vue", ".svelte", ".html", ".css", ".scss", ".json", ".yaml", ".yml", ".toml", ".md", ".sql", ".sh"];
         return !ignored.some((part) => path.split("/").includes(part.slice(0, -1))) &&
           suffixes.some((suffix) => path.toLowerCase().endsWith(suffix));
-      }).slice(0, 120);
+      }).slice(0, 1000);
 
       const sources: Record<string, string> = {};
       const payloadFiles: Array<{ path: string; content: string }> = [];
@@ -772,7 +772,7 @@ function Explorer() {
       for (const file of supported) {
         if (file.size > 256 * 1024) continue;
         totalBytes += file.size;
-        if (totalBytes > 8 * 1024 * 1024) throw new Error("Selected source files exceed the 8 MB limit.");
+        if (totalBytes > 64 * 1024 * 1024) throw new Error("Selected source files exceed the 64 MB limit.");
         const content = await file.text();
         const path = file.webkitRelativePath || file.name;
         sources[path] = content;
