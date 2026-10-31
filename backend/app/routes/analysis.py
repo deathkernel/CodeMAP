@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from pydantic import BaseModel, HttpUrl, Field
 
-from app.services.analyzer import analyze_sources, architecture_insights, architecture_health, code_intelligence, symbol_intelligence, advanced_architecture_intelligence
+from app.services.analyzer import analyze_sources_incremental, architecture_insights, architecture_health, code_intelligence, symbol_intelligence, advanced_architecture_intelligence
 from app.services.bug_detector import scan_for_bugs_incremental
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
@@ -107,7 +107,7 @@ async def analyze_github(request: AnalyzeRequest, background_tasks: BackgroundTa
     if embedding_job["created"]:
         background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
     indexed_embeddings = count_project_embeddings(project_id)
-    graph = analyze_sources(sources)
+    graph = analyze_sources_incremental(project_id, sources)
     bug_report = scan_for_bugs_incremental(project_id, sources)
     symbols = symbol_intelligence(sources)
     advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
