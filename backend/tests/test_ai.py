@@ -95,3 +95,42 @@ def test_legacy_gguf_model_setting_maps_to_installed_tag(monkeypatch) -> None:
     )
     _, model = __import__("app.routes.ai", fromlist=["_settings"])._settings()
     assert model == "hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q6_K"
+
+
+
+def test_architecture_explainer_uses_local_model(monkeypatch) -> None:
+    async def fake_generate(prompt: str):
+        assert "demo-app" in prompt
+        assert "circular_dependencies" in prompt
+        return "local-model", False, "The project has two main modules."
+
+    monkeypatch.setattr("app.routes.ai._generate_local", fake_generate)
+    response = client.post("/api/ai/explain-architecture", json={
+        "repository": "demo-app",
+        "stats": {"files_analyzed": 4, "dependencies_found": 3},
+        "architecture_insights": {
+            "entry_points": [{"path": "app/main.py"}],
+            "circular_dependencies": [],
+            "module_groups": [{"name": "app", "files": 4}],
+        },
+        "architecture_health": {"health_score": 90, "health_grade": "healthy"},
+        "code_intelligence": {"dependency_depth": {"max_depth": 2}},
+        "symbol_stats": {"symbols": 5, "functions": 4, "classes": 1},
+        "bug_stats": {"total": 0},
+    })
+    assert response.status_code == 200
+    assert response.json()["model"] == "local-model"
+    assert "two main modules" in response.json()["explanation"]
+
+
+def test_architecture_explainer_rejects_oversized_summary() -> None:
+    response = client.post("/api/ai/explain-architecture", json={
+        "repository": "large-demo",
+        "stats": {"files_analyzed": 1},
+        "architecture_insights": {"details": "x" * 25000},
+        "architecture_health": {},
+        "code_intelligence": {},
+        "symbol_stats": {},
+        "bug_stats": {},
+    })
+    assert response.status_code == 413
