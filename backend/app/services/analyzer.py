@@ -194,7 +194,7 @@ def architecture_insights(nodes: list[dict[str, Any]], edges: list[dict[str, Any
 
 
 def code_intelligence(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
-    """Calculate graph connectivity and dependency-depth indicators."""
+    """Calculate graph connectivity and longest dependency depth for acyclic paths."""
     paths = [node["path"] for node in nodes]
     known = set(paths)
     incoming = {path: 0 for path in paths}
@@ -206,22 +206,49 @@ def code_intelligence(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) 
             outgoing[source] += 1
             incoming[target] += 1
             adjacency[source].append(target)
+
     bottlenecks = [
         {"path": path, "fan_in": incoming[path], "fan_out": outgoing[path],
          "connections": incoming[path] + outgoing[path]}
         for path in paths if incoming[path] >= 2 or outgoing[path] >= 3
     ]
     bottlenecks.sort(key=lambda item: (-item["connections"], item["path"]))
+
     roots = [path for path in paths if incoming[path] == 0]
-    distances: dict[str, int] = {}
-    queue = [(path, 0) for path in roots]
+    reachable: set[str] = set()
+    queue = list(roots)
     while queue:
-        current, depth = queue.pop(0)
-        if current in distances and distances[current] <= depth:
+        current = queue.pop(0)
+        if current in reachable:
             continue
-        distances[current] = depth
-        queue.extend((target, depth + 1) for target in adjacency[current])
-    deepest = max(distances.values(), default=0)
+        reachable.add(current)
+        queue.extend(adjacency[current])
+
+    # Kahn's algorithm computes the longest path in the acyclic portion of the graph.
+    remaining_indegree = dict(incoming)
+    longest_depth = {path: 0 for path in roots}
+    queue = list(roots)
+    processed: set[str] = set()
+    while queue:
+        current = queue.pop(0)
+        processed.add(current)
+        for target in adjacency[current]:
+            longest_depth[target] = max(
+                longest_depth.get(target, 0),
+                longest_depth[current] + 1,
+            )
+            remaining_indegree[target] -= 1
+            if remaining_indegree[target] == 0:
+                queue.append(target)
+
+    # Nodes held back by a cycle are shown one layer beyond the deepest acyclic path.
+    cyclic_or_blocked = (reachable - processed)
+    if cyclic_or_blocked:
+        cycle_depth = max(longest_depth.values(), default=0) + 1
+        for path in cyclic_or_blocked:
+            longest_depth[path] = cycle_depth
+
+    deepest = max(longest_depth.values(), default=0)
     return {
         "bottleneck_files": bottlenecks[:10],
         "unreferenced_files": [
@@ -229,13 +256,12 @@ def code_intelligence(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) 
             for path in paths if incoming[path] == 0
         ],
         "dependency_depth": {
-            "max_depth": deepest, "reachable_files": len(distances),
-            "unreachable_files": len(paths) - len(distances),
-            "deepest_files": sorted(path for path, depth in distances.items() if depth == deepest) if distances else [],
+            "max_depth": deepest, "reachable_files": len(reachable),
+            "unreachable_files": len(paths) - len(reachable),
+            "deepest_files": sorted(path for path, depth in longest_depth.items() if depth == deepest) if longest_depth else [],
         },
-        "code_intelligence_note": "Connectivity and depth use only locally resolved imports. Unreferenced files may still be used by frameworks, dynamic imports, tests, or external entry points.",
+        "code_intelligence_note": "Connectivity and depth use only locally resolved imports. Depth is the longest acyclic dependency chain; cycle-blocked reachable files are placed one layer after the deepest acyclic path. Unreferenced files may still be used by frameworks, dynamic imports, tests, or external entry points.",
     }
-
 
 def architecture_health(
     nodes: list[dict[str, Any]], edges: list[dict[str, Any]],
