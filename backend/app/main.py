@@ -3,6 +3,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from app.routes.analysis import router as analysis_router
 from app.routes.ai import router as ai_router
 from app.routes.repository import router as repository_router
