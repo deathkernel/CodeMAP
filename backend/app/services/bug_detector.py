@@ -179,6 +179,34 @@ def _python_findings(path: str, source: str) -> list[dict[str, Any]]:
                 ))
 
         if isinstance(node, ast.Call):
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"execute", "executemany"}
+                and node.args
+                and isinstance(node.args[0], (ast.JoinedStr, ast.BinOp))
+            ):
+                findings.append(_finding(
+                    path, node.lineno, "dynamic-sql-query",
+                    "SQL query built with string interpolation", "high",
+                    "The SQL statement is assembled with an f-string or string concatenation before execution; untrusted values may create SQL injection risk.",
+                    "Use parameterized queries and pass values separately from the SQL statement.",
+                ))
+
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"execute", "executemany"}
+                and node.args
+                and isinstance(node.args[0], ast.Call)
+                and isinstance(node.args[0].func, ast.Attribute)
+                and node.args[0].func.attr == "format"
+            ):
+                findings.append(_finding(
+                    path, node.lineno, "formatted-sql-query",
+                    "SQL query built with format()", "high",
+                    "The SQL statement is formatted before execution; interpolated values may create SQL injection risk.",
+                    "Use parameterized queries and pass values separately from the SQL statement.",
+                ))
+
             if isinstance(node.func, ast.Name) and node.func.id in {"eval", "exec"}:
                 findings.append(_finding(
                     path, node.lineno, "dynamic-code-execution",
