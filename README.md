@@ -34,6 +34,7 @@ CodeMap uses Ollama for local AI features, including code explanation and AI-ass
 - Local Ollama explanations for source files, findings, and architecture summaries.
 - Project-scoped codebase Q&A using a local SQLite retrieval index. Python and JavaScript/TypeScript functions and classes are indexed as focused chunks where recognized; other files use bounded text chunks. Retrieval combines SQLite FTS5/BM25 keyword ranking with local Ollama vector embeddings using reciprocal-rank fusion. If the embedding model is unavailable, Q&A falls back to BM25/SQLite text search. The UI can clear a project's indexed chunks and embeddings.
 - Graph exports: PNG and Mermaid.
+- Advanced reporting: downloadable architecture/quality/security PDF reports, complete JSON analysis export, and SQLite-backed before/after snapshots with health, dependency, module-risk, and finding-count deltas. Reporting API: `POST /api/reports/architecture.pdf`, `POST /api/reports/snapshots`, and `GET /api/reports/compare/{project_id}`.
 
 ## Local semantic retrieval
 
@@ -71,12 +72,7 @@ CodeMAP/
 
 ## Development status
 
-Core workflows are implemented: GitHub/local-folder/ZIP ingestion, dependency visualization, architecture and static-issue analysis, local Ollama explanations, and project-scoped codebase Q&A. Backend tests and the frontend production build are being validated through GitHub Actions.
-
-## Next improvements
-
-- Expand language-specific static checks and parser coverage.
-- Improve incremental indexing and performance on very large repositories.
+All five planned major feature areas are implemented: advanced static bug detection, semantic RAG, advanced architecture intelligence, large-repository processing, and advanced reporting. Testing and validation are intentionally pending.
 
 ## Local setup
 
