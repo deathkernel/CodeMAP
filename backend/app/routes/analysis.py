@@ -1,6 +1,7 @@
 """Static repository analysis endpoints."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 
@@ -18,6 +19,8 @@ router = APIRouter(prefix="/api/repository", tags=["analysis"])
 MAX_ANALYZED_FILES = 1000
 MAX_FOLDER_FILE_BYTES = 256 * 1024
 MAX_FOLDER_TOTAL_BYTES = 64 * 1024 * 1024
+MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024
+GITHUB_FETCH_BATCH_SIZE = 16
 FOLDER_SOURCE_SUFFIXES = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".java", ".go",
     ".rs", ".c", ".h", ".cpp", ".cs", ".php", ".rb", ".swift", ".kt",
@@ -59,24 +62,40 @@ async def analyze_github(request: AnalyzeRequest, background_tasks: BackgroundTa
         if item.get("sha") and item.get("size", 0) <= MAX_FILE_BYTES
     ][:MAX_ANALYZED_FILES]
     sources: dict[str, str] = {}
+    total_source_bytes = 0
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
 
+    async def fetch_blob(client: httpx.AsyncClient, item: dict) -> tuple[str, str] | None:
+        response = await client.get(
+            f"https://api.github.com/repos/{owner}/{name}/git/blobs/{item['sha']}"
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("encoding") != "base64":
+            return None
+        try:
+            raw = base64.b64decode(payload.get("content", ""), validate=False)
+            if len(raw) > MAX_FILE_BYTES:
+                return None
+            return item["path"], raw.decode("utf-8", errors="replace")
+        except (binascii.Error, ValueError):
+            return None
+
     async with httpx.AsyncClient(timeout=20, follow_redirects=False, headers=headers) as client:
-        for item in selected:
-            response = await client.get(
-                f"https://api.github.com/repos/{owner}/{name}/git/blobs/{item['sha']}"
-            )
-            if response.status_code == 404:
-                continue
-            response.raise_for_status()
-            payload = response.json()
-            if payload.get("encoding") != "base64":
-                continue
-            try:
-                raw = base64.b64decode(payload.get("content", ""), validate=False)
-                sources[item["path"]] = raw[:MAX_FILE_BYTES].decode("utf-8", errors="replace")
-            except (binascii.Error, ValueError):
-                continue
+        for offset in range(0, len(selected), GITHUB_FETCH_BATCH_SIZE):
+            batch = selected[offset:offset + GITHUB_FETCH_BATCH_SIZE]
+            results = await asyncio.gather(*(fetch_blob(client, item) for item in batch))
+            for result in results:
+                if result is None:
+                    continue
+                path, source = result
+                source_size = len(source.encode("utf-8"))
+                if total_source_bytes + source_size > MAX_TOTAL_SOURCE_BYTES:
+                    continue
+                sources[path] = source
+                total_source_bytes += source_size
 
     project_id = make_stable_project_id(inventory["repository"], inventory["default_branch"])
     index_update = index_project_sources_incremental(project_id, sources)
