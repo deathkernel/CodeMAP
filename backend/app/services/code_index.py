@@ -514,7 +514,7 @@ def create_embedding_job(project_id: str) -> dict[str, str]:
             (project_id,),
         ).fetchone()
         if existing:
-            return {"job_id": existing[0], "status": existing[1]}
+            return {"job_id": existing[0], "status": existing[1], "created": False}
 
         job_id = uuid.uuid4().hex
         connection.execute(
@@ -523,7 +523,7 @@ def create_embedding_job(project_id: str) -> dict[str, str]:
             (job_id, project_id),
         )
         connection.commit()
-        return {"job_id": job_id, "status": "queued"}
+        return {"job_id": job_id, "status": "queued", "created": True}
     finally:
         connection.close()
 
