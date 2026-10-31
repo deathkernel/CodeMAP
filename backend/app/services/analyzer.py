@@ -120,7 +120,7 @@ def analyze_sources(sources: dict[str, str], max_files: int = 300) -> dict[str, 
 def analyze_sources_incremental(
     project_id: str,
     sources: dict[str, str],
-    max_files: int = 300,
+    max_files: int = 1000,
 ) -> dict[str, Any]:
     """Reuse cached per-file import extraction and resolve edges against the current snapshot."""
     import hashlib
