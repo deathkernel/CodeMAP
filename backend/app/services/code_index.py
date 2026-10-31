@@ -251,6 +251,89 @@ def _chunks(source: str, path: str):
     else:
         yield from _text_chunks(source)
 
+
+def make_stable_project_id(name: str, branch: str) -> str:
+    """Create a stable local index key that survives source-file changes."""
+    digest = hashlib.sha256(f"{name}\n{branch}".encode("utf-8")).hexdigest()
+    return digest[:24]
+
+
+def _ensure_file_manifest(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS code_index_files ("
+        "project_id TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL, "
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "PRIMARY KEY (project_id, path))"
+    )
+
+
+def index_project_sources_incremental(
+    project_id: str,
+    sources: dict[str, str],
+) -> dict[str, int]:
+    """Update only changed source files and remove files no longer in the snapshot."""
+    connection, has_fts = _connect()
+    table = "code_chunks" if has_fts else "code_chunks_plain"
+    try:
+        _ensure_file_manifest(connection)
+        existing_rows = connection.execute(
+            "SELECT path, content_hash FROM code_index_files WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+        existing = {path: content_hash for path, content_hash in existing_rows}
+        current = {
+            path: hashlib.sha256(source.encode("utf-8")).hexdigest()
+            for path, source in sources.items()
+        }
+
+        removed = set(existing) - set(current)
+        changed = {
+            path for path, digest in current.items()
+            if existing.get(path) != digest
+        }
+        for path in removed | changed:
+            connection.execute(
+                f"DELETE FROM {table} WHERE project_id = ? AND path = ?",
+                (project_id, path),
+            )
+            connection.execute(
+                "DELETE FROM code_embeddings WHERE project_id = ? AND path = ?",
+                (project_id, path),
+            )
+
+        rows = []
+        for path in sorted(changed):
+            for start_line, chunk in _chunks(sources[path], path):
+                rows.append((project_id, path, start_line, chunk))
+            connection.execute(
+                "INSERT OR REPLACE INTO code_index_files "
+                "(project_id, path, content_hash, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                (project_id, path, current[path]),
+            )
+
+        for path in removed:
+            connection.execute(
+                "DELETE FROM code_index_files WHERE project_id = ? AND path = ?",
+                (project_id, path),
+            )
+
+        connection.executemany(
+            f"INSERT INTO {table} (project_id, path, start_line, content) VALUES (?, ?, ?, ?)",
+            rows,
+        )
+        connection.commit()
+        total_files = len(current)
+        return {
+            "changed_files": len(changed),
+            "removed_files": len(removed),
+            "unchanged_files": max(0, total_files - len(changed)),
+            "indexed_chunks": len(rows),
+            "total_files": total_files,
+        }
+    finally:
+        connection.close()
+
+
 def index_project_sources(project_id: str, sources: dict[str, str]) -> int:
     """Replace a project's local text index with bounded overlapping source chunks."""
     connection, has_fts = _connect()
@@ -346,16 +429,26 @@ async def _ollama_embeddings(texts: list[str]) -> list[list[float]] | None:
 
 
 async def index_project_embeddings(project_id: str, batch_size: int = 24) -> int:
-    """Build local vector embeddings for a project's chunks; never downloads a model."""
+    """Embed only chunks that do not already have a matching local vector."""
     connection, has_fts = _connect()
     table = "code_chunks" if has_fts else "code_chunks_plain"
     try:
         _ensure_embedding_table(connection)
         rows = connection.execute(
-            f"SELECT path, CAST(start_line AS INTEGER), content FROM {table} WHERE project_id = ?",
+            f"SELECT c.path, CAST(c.start_line AS INTEGER), c.content "
+            f"FROM {table} c LEFT JOIN code_embeddings e "
+            "ON e.project_id = c.project_id AND e.path = c.path "
+            "AND e.start_line = c.start_line AND e.content = c.content "
+            "WHERE c.project_id = ? AND e.project_id IS NULL",
             (project_id,),
         ).fetchall()
-        connection.execute("DELETE FROM code_embeddings WHERE project_id = ?", (project_id,))
+        connection.execute(
+            f"DELETE FROM code_embeddings WHERE project_id = ? AND NOT EXISTS "
+            f"(SELECT 1 FROM {table} c WHERE c.project_id = code_embeddings.project_id "
+            "AND c.path = code_embeddings.path AND c.start_line = code_embeddings.start_line "
+            "AND c.content = code_embeddings.content)",
+            (project_id,),
+        )
         connection.commit()
     finally:
         connection.close()
