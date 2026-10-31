@@ -13,6 +13,13 @@ SECRET_PATTERN = re.compile(
 )
 PLACEHOLDERS = {"your_api_key", "replace_me", "changeme", "example", "placeholder"}
 
+JS_RISK_PATTERNS = (
+    (re.compile(r"\beval\s*\("), "dynamic-code-execution", "Dynamic code execution", "high", "eval() executes a string as code and can create a code-injection risk.", "Avoid eval(); parse data as data and use explicit, allowlisted operations."),
+    (re.compile(r"\.innerHTML\s*="), "unsafe-innerhtml-assignment", "Potentially unsafe innerHTML assignment", "high", "Assigning to innerHTML parses a string as HTML; untrusted content can create cross-site scripting risk.", "Prefer textContent or sanitize HTML with a well-maintained allowlist-based sanitizer."),
+    (re.compile(r"\bdangerouslySetInnerHTML\s*="), "react-dangerous-html", "React dangerouslySetInnerHTML", "high", "This React escape hatch inserts raw HTML and can create cross-site scripting risk if content is not sanitized.", "Avoid raw HTML where possible; otherwise sanitize content before rendering."),
+    (re.compile(r"\brejectUnauthorized\s*:\s*false"), "tls-certificate-validation-disabled", "TLS certificate validation disabled", "high", "TLS certificate validation is disabled, making man-in-the-middle attacks easier.", "Keep certificate validation enabled and configure trusted certificates correctly."),
+)
+
 
 def _finding(
     path: str,
@@ -127,8 +134,14 @@ def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str,
     findings: list[dict[str, Any]] = []
 
     for path, source in sorted(sources.items()):
-        if path.lower().endswith(".py"):
+        suffix = path.lower().rsplit(".", 1)[-1] if "." in path else ""
+        if suffix == "py":
             findings.extend(_python_findings(path, source))
+        elif suffix in {"js", "jsx", "ts", "tsx", "mjs", "cjs", "vue", "svelte"}:
+            for line_number, line in enumerate(source.splitlines(), 1):
+                for pattern, rule_id, title, severity, message, recommendation in JS_RISK_PATTERNS:
+                    if pattern.search(line):
+                        findings.append(_finding(path, line_number, rule_id, title, severity, message, recommendation))
 
         for match in SECRET_PATTERN.finditer(source):
             value = match.group(2).strip().lower()
