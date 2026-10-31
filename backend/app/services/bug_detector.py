@@ -199,6 +199,59 @@ def _python_findings(path: str, source: str) -> list[dict[str, Any]]:
     return findings
 
 
+
+def _cross_file_python_findings(sources: dict[str, str]) -> list[dict[str, Any]]:
+    """Check explicit relative Python imports against files in the same source set."""
+    module_paths: set[str] = set()
+    parsed_files: list[tuple[str, ast.AST]] = []
+
+    for path, source in sources.items():
+        if not path.lower().endswith(".py"):
+            continue
+        parts = path.replace("\\\\", "/").split("/")
+        filename = parts[-1]
+        directories = parts[:-1]
+        if filename == "__init__.py":
+            module_parts = directories
+        else:
+            module_parts = directories + [filename[:-3]]
+        module_name = ".".join(part for part in module_parts if part and part.isidentifier())
+        if module_name:
+            module_paths.add(module_name)
+        try:
+            parsed_files.append((path, ast.parse(source)))
+        except (SyntaxError, ValueError):
+            continue
+
+    findings: list[dict[str, Any]] = []
+    for path, tree in parsed_files:
+        parts = path.replace("\\\\", "/").split("/")
+        filename = parts[-1]
+        package_parts = parts[:-1]
+        if filename == "__init__.py":
+            package_parts = parts[:-1]
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.level <= 0 or not node.module:
+                continue
+
+            keep_count = len(package_parts) - node.level + 1
+            if keep_count < 0:
+                continue
+            base_parts = package_parts[:keep_count]
+            target_parts = base_parts + node.module.split(".")
+            target_module = ".".join(part for part in target_parts if part)
+            if target_module and target_module not in module_paths:
+                findings.append(_finding(
+                    path, node.lineno, "unresolved-relative-import",
+                    "Relative import target not found", "medium",
+                    f"The relative import target '{node.module}' does not match a Python module included in this analysis.",
+                    "Check the import path, package layout, and whether the target file was included in the analyzed repository.",
+                ))
+
+    return findings
+
+
 def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str, Any]:
     """Scan bounded source strings and return explainable static findings."""
     findings: list[dict[str, Any]] = []
@@ -223,6 +276,8 @@ def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str,
                 "A credential-like assignment contains a non-placeholder string. The value is intentionally not shown.",
                 "Move credentials to environment variables or a secret manager, then rotate exposed credentials.",
             ))
+
+    findings.extend(_cross_file_python_findings(sources))
 
     findings.sort(key=lambda item: (
         {"high": 0, "medium": 1, "low": 2}.get(item["severity"], 3),
