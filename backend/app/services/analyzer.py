@@ -116,6 +116,105 @@ def analyze_sources(sources: dict[str, str], max_files: int = 300) -> dict[str, 
 
 
 
+
+def analyze_sources_incremental(
+    project_id: str,
+    sources: dict[str, str],
+    max_files: int = 300,
+) -> dict[str, Any]:
+    """Reuse cached per-file import extraction and resolve edges against the current snapshot."""
+    import hashlib
+    import json
+    import sqlite3
+    from app.services.code_index import _database_path
+
+    paths = sorted(sources)[:max_files]
+    connection = sqlite3.connect(_database_path(), timeout=30)
+    try:
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS code_graph_file_cache ("
+            "project_id TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL, "
+            "imports_json TEXT NOT NULL, PRIMARY KEY (project_id, path))"
+        )
+        existing_rows = connection.execute(
+            "SELECT path, content_hash FROM code_graph_file_cache WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+        existing = {path: digest for path, digest in existing_rows}
+        current_paths = set(paths)
+
+        for stale_path in set(existing) - current_paths:
+            connection.execute(
+                "DELETE FROM code_graph_file_cache WHERE project_id = ? AND path = ?",
+                (project_id, stale_path),
+            )
+
+        imports_by_path: dict[str, list[str]] = {}
+        for path in paths:
+            source = sources[path]
+            digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+            if existing.get(path) == digest:
+                row = connection.execute(
+                    "SELECT imports_json FROM code_graph_file_cache WHERE project_id = ? AND path = ?",
+                    (project_id, path),
+                ).fetchone()
+                imports_by_path[path] = json.loads(row[0]) if row else []
+                continue
+
+            suffix = PurePosixPath(path).suffix.lower()
+            if suffix == ".py":
+                imports = _python_imports(source)
+            elif suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
+                imports = _js_imports(source)
+            else:
+                imports = []
+            imports_by_path[path] = imports
+            connection.execute(
+                "INSERT OR REPLACE INTO code_graph_file_cache "
+                "(project_id, path, content_hash, imports_json) VALUES (?, ?, ?, ?)",
+                (project_id, path, digest, json.dumps(imports)),
+            )
+
+        connection.commit()
+    finally:
+        connection.close()
+
+    known_paths = set(paths)
+    nodes = []
+    edges = []
+    unresolved = 0
+    for path in paths:
+        source = sources[path]
+        suffix = PurePosixPath(path).suffix.lower()
+        is_python = suffix == ".py"
+        nodes.append({
+            "id": path,
+            "type": "file",
+            "label": PurePosixPath(path).name,
+            "path": path,
+            "lines": source.count("\n") + (1 if source else 0),
+            "language": suffix.lstrip(".") or "unknown",
+        })
+        for imported in imports_by_path.get(path, []):
+            target = _resolve_import(path, imported, known_paths, python=is_python)
+            if target:
+                edges.append({"id": f"{path}::{target}", "source": path, "target": target, "label": "imports"})
+            elif imported.startswith(".") or is_python:
+                unresolved += 1
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "stats": {
+            "files_analyzed": len(nodes),
+            "dependencies_found": len(edges),
+            "relative_imports_unresolved": unresolved,
+            "files_skipped_by_limit": max(0, len(sources) - len(nodes)),
+        },
+        "analysis_note": "Incremental static import analysis. Per-file import extraction is reused for unchanged files; dependency links are resolved against the current analyzed file set. Source code was not executed.",
+    }
+
+
 def architecture_insights(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
     """Summarize likely entry points, import cycles, and top-level modules."""
     paths = [node["path"] for node in nodes]
