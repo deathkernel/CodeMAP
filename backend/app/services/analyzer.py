@@ -554,9 +554,11 @@ def advanced_architecture_intelligence(
             package_data = {}
         if not isinstance(package_data, dict):
             continue
+        runtime_dependencies = package_data.get("dependencies")
+        development_dependencies = package_data.get("devDependencies")
         dependencies = {
-            **(package_data.get("dependencies") or {}),
-            **(package_data.get("devDependencies") or {}),
+            **(runtime_dependencies if isinstance(runtime_dependencies, dict) else {}),
+            **(development_dependencies if isinstance(development_dependencies, dict) else {}),
         }
         for package, framework in (
             ("next", "Next.js"), ("express", "Express"), ("fastify", "Fastify"),
@@ -586,6 +588,15 @@ def advanced_architecture_intelligence(
             if needle in manifest_text:
                 frameworks.add(framework)
 
+    combined_source = "\n".join(sources.values())
+    if re.search(r"\bFastAPI\s*\(", combined_source):
+        frameworks.add("FastAPI")
+    if re.search(r"\bFlask\s*\(", combined_source):
+        frameworks.add("Flask")
+    if re.search(r"\bexpress\s*\(", combined_source):
+        frameworks.add("Express")
+    if re.search(r"\bNestFactory\.create\s*\(", combined_source):
+        frameworks.add("NestJS")
     if any(path.endswith("manage.py") for path in known_paths):
         frameworks.add("Django")
     if any(PurePosixPath(path).name.lower() in {"next.config.js", "next.config.mjs", "next.config.ts"} for path in known_paths):
