@@ -105,7 +105,7 @@ async def export_architecture_pdf(request: ReportRequest):
          f"{summary['health_score']}/100 ({summary['health_grade']})",
          str(summary["circular_groups"])],
     ]
-    metric_table = Table(metrics, colWidths=[40 * mm, 40 * mm, 55 * mm, 40 * mm])
+    metric_table = Table(metrics, colWidths=[39 * mm, 39 * mm, 54 * mm, 39 * mm])
     metric_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf7")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#26345a")),
@@ -135,7 +135,7 @@ async def export_architecture_pdf(request: ReportRequest):
             ]
             for item in entry_points[:40]
         ])
-        table = Table(rows, colWidths=[75 * mm, 100 * mm], repeatRows=1)
+        table = Table(rows, colWidths=[73 * mm, 98 * mm], repeatRows=1)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf7")),
             ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
@@ -147,6 +147,79 @@ async def export_architecture_pdf(request: ReportRequest):
         story.append(table)
     else:
         story.append(Paragraph("No entry-point candidates detected.", styles["BodyText"]))
+
+    api_endpoints = advanced.get("api_endpoints") or []
+    story.append(Paragraph("API endpoint map", styles["SectionHeading"]))
+    if api_endpoints:
+        rows = [["Method", "Route", "Framework", "Source"]]
+        for item in api_endpoints[:60]:
+            rows.append([
+                Paragraph(escape(str(item.get("method", ""))), styles["SmallCell"]),
+                Paragraph(escape(str(item.get("route", ""))), styles["SmallCell"]),
+                Paragraph(escape(str(item.get("framework", ""))), styles["SmallCell"]),
+                Paragraph(escape(f"{item.get('path', '')}:{item.get('line', '')}"), styles["SmallCell"]),
+            ])
+        table = Table(rows, colWidths=[20 * mm, 57 * mm, 42 * mm, 52 * mm], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf7")),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(table)
+    else:
+        story.append(Paragraph("No API route candidates detected.", styles["BodyText"]))
+
+    relations = advanced.get("database_relations") or []
+    story.append(Paragraph("Database relationship hints", styles["SectionHeading"]))
+    if relations:
+        rows = [["Source model", "Relationship", "Target", "Source file"]]
+        for item in relations[:60]:
+            rows.append([
+                Paragraph(escape(str(item.get("source_model", ""))), styles["SmallCell"]),
+                Paragraph(escape(str(item.get("kind", ""))), styles["SmallCell"]),
+                Paragraph(escape(str(item.get("target", ""))), styles["SmallCell"]),
+                Paragraph(escape(f"{item.get('path', '')}:{item.get('line', '')}"), styles["SmallCell"]),
+            ])
+        table = Table(rows, colWidths=[38 * mm, 35 * mm, 43 * mm, 55 * mm], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf7")),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(table)
+    else:
+        story.append(Paragraph("No database relationship hints detected.", styles["BodyText"]))
+
+    module_health = (result.get("architecture_health") or {}).get("module_health") or []
+    story.append(Paragraph("Module quality and risk", styles["SectionHeading"]))
+    if module_health:
+        rows = [["Module", "Risk", "Complexity", "High / Med / Low"]]
+        for item in module_health[:50]:
+            counts = item.get("bug_counts") or {}
+            rows.append([
+                Paragraph(escape(str(item.get("name", ""))), styles["SmallCell"]),
+                Paragraph(escape(str(item.get("risk_level", ""))), styles["SmallCell"]),
+                str(item.get("complexity_score", 0)),
+                f"{counts.get('high', 0)} / {counts.get('medium', 0)} / {counts.get('low', 0)}",
+            ])
+        table = Table(rows, colWidths=[65 * mm, 30 * mm, 35 * mm, 41 * mm], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf7")),
+            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(table)
+    else:
+        story.append(Paragraph("No module risk data was reported.", styles["BodyText"]))
 
     story.append(Paragraph("Code quality and security", styles["SectionHeading"]))
     story.append(Paragraph(
@@ -168,7 +241,7 @@ async def export_architecture_pdf(request: ReportRequest):
                 Paragraph(escape(f"{item.get('path', '')}:{item.get('line', '')}"), styles["SmallCell"]),
                 Paragraph(escape(str(item.get("recommendation", ""))), styles["SmallCell"]),
             ])
-        table = Table(rows, colWidths=[18 * mm, 43 * mm, 48 * mm, 66 * mm], repeatRows=1)
+        table = Table(rows, colWidths=[17 * mm, 42 * mm, 47 * mm, 65 * mm], repeatRows=1)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf7")),
             ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
