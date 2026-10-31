@@ -22,6 +22,28 @@ JS_RISK_PATTERNS = (
 )
 
 
+LANGUAGE_RISK_PATTERNS = {
+    "php": (
+        (re.compile(r"\beval\s*\("), "dynamic-code-execution", "Dynamic code execution", "high", "eval() executes a string as PHP code.", "Avoid eval(); use explicit, allowlisted operations."),
+        (re.compile(r"\b(?:shell_exec|passthru|system|exec)\s*\("), "php-shell-execution", "PHP shell command execution", "high", "This function can execute operating-system commands; unsafe input can lead to command injection.", "Avoid shell execution or pass strictly validated arguments through a safe process API."),
+        (re.compile(r"\bunserialize\s*\("), "php-unserialize-untrusted-data", "PHP unserialize call", "medium", "Unserializing untrusted data can instantiate objects and trigger unsafe magic methods.", "Use JSON for untrusted data or restrict allowed classes explicitly."),
+    ),
+    "java": (
+        (re.compile(r"\bRuntime\s*\.\s*getRuntime\s*\(\s*\)\s*\.\s*exec\s*\("), "java-runtime-exec", "Java runtime command execution", "high", "Runtime.exec() launches operating-system processes and may be unsafe when arguments include untrusted input.", "Avoid shell command construction and validate each argument before process execution."),
+    ),
+    "go": (
+        (re.compile(r"\bexec\s*\.\s*Command\s*\(\s*['\"](?:sh|bash|cmd|powershell)['\"]\s*,\s*['\"](?:-c|/c|/command)['\"]"), "go-shell-command", "Go shell command execution", "high", "Starting a shell with a command string can expose command injection when input is incorporated.", "Prefer direct executable invocation with separate, validated arguments."),
+        (re.compile(r"\bInsecureSkipVerify\s*:\s*true\b"), "tls-certificate-validation-disabled", "TLS certificate validation disabled", "high", "Go TLS certificate verification is disabled.", "Keep certificate verification enabled and configure trusted certificates correctly."),
+    ),
+    "rb": (
+        (re.compile(r"\b(?:eval|system|exec)\s*\("), "ruby-dynamic-or-shell-execution", "Ruby dynamic or shell execution", "high", "This call evaluates code or executes a system command and may be unsafe with untrusted input.", "Use explicit operations and avoid constructing executable strings from external input."),
+    ),
+    "cs": (
+        (re.compile(r"\bProcess\s*\.\s*Start\s*\("), "dotnet-process-start", ".NET process execution", "medium", "Process.Start() launches another process; dynamically constructed arguments may introduce command or argument injection.", "Validate executable paths and arguments, and avoid shell execution."),
+    ),
+}
+
+
 def _finding(
     path: str,
     line: int,
@@ -306,6 +328,11 @@ def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str,
         elif suffix in {"js", "jsx", "ts", "tsx", "mjs", "cjs", "vue", "svelte"}:
             for line_number, line in enumerate(source.splitlines(), 1):
                 for pattern, rule_id, title, severity, message, recommendation in JS_RISK_PATTERNS:
+                    if pattern.search(line):
+                        findings.append(_finding(path, line_number, rule_id, title, severity, message, recommendation))
+        elif suffix in LANGUAGE_RISK_PATTERNS:
+            for line_number, line in enumerate(source.splitlines(), 1):
+                for pattern, rule_id, title, severity, message, recommendation in LANGUAGE_RISK_PATTERNS[suffix]:
                     if pattern.search(line):
                         findings.append(_finding(path, line_number, rule_id, title, severity, message, recommendation))
 
