@@ -585,6 +585,20 @@ def get_index_job(job_id: str) -> dict[str, Any] | None:
         connection.close()
 
 
+
+def count_project_embeddings(project_id: str) -> int:
+    """Count stored vectors for one project without loading their payloads."""
+    connection, _ = _connect()
+    try:
+        _ensure_embedding_table(connection)
+        return connection.execute(
+            "SELECT COUNT(*) FROM code_embeddings WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+
 def _cosine_similarity(left: list[float], right: list[float]) -> float:
     if len(left) != len(right) or not left:
         return 0.0
