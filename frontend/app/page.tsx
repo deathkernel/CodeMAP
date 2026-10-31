@@ -253,6 +253,7 @@ function Explorer() {
   const [codebaseAnswer, setCodebaseAnswer] = useState("");
   const [codebaseSources, setCodebaseSources] = useState<Array<{ path: string; start_line: number }>>([]);
   const [codebaseLoading, setCodebaseLoading] = useState(false);
+  const [codebaseClearLoading, setCodebaseClearLoading] = useState(false);
   const [codebaseError, setCodebaseError] = useState("");
   const [ollamaState, setOllamaState] = useState<"checking" | "ready" | "missing" | "offline">("checking");
 
@@ -610,6 +611,24 @@ function Explorer() {
       setArchitectureAiError(err instanceof Error ? err.message : "Could not explain this architecture.");
     } finally {
       setArchitectureAiLoading(false);
+    }
+  }
+
+  async function clearCodebaseIndex() {
+    if (!result) return;
+    setCodebaseClearLoading(true);
+    setCodebaseError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/repository/index/${result.project_id}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Could not clear the local index.");
+      setResult((current) => current ? { ...current, indexed_chunks: 0 } : current);
+      setCodebaseAnswer("");
+      setCodebaseSources([]);
+    } catch (err) {
+      setCodebaseError(err instanceof Error ? err.message : "Could not clear the local index.");
+    } finally {
+      setCodebaseClearLoading(false);
     }
   }
 
@@ -984,7 +1003,11 @@ function Explorer() {
               </div>
               <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.035] p-5">
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Sparkles size={16} className="text-cyan-300" /> Ask your codebase</div>
-                <p className="mb-3 text-[10px] leading-5 text-slate-500">Local retrieval index · {result.indexed_chunks} source chunks · project-isolated</p>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-[10px] leading-5 text-slate-500">Local retrieval index · {result.indexed_chunks} source chunks · project-isolated</p>
+                  {result.indexed_chunks > 0 && <button type="button" onClick={() => { void clearCodebaseIndex(); }} disabled={codebaseClearLoading}
+                    className="shrink-0 text-[10px] text-rose-300 hover:text-rose-200 disabled:opacity-50">{codebaseClearLoading ? "Clearing…" : "Clear index"}</button>}
+                </div>
                 <form onSubmit={askCodebase} className="space-y-2">
                   <textarea value={codebaseQuestion} onChange={(event) => setCodebaseQuestion(event.target.value)}
                     placeholder="How does authentication work? Where is the database connection created?"
