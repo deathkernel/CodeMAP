@@ -27,6 +27,7 @@ CodeMap uses Ollama for local AI features, including code explanation and AI-ass
 - GitHub repository analysis, local folder analysis, and ZIP upload analysis.
 - ZIP files are inspected and read in memory; repository code is never extracted to disk or executed.
 - Static dependency graph, folder navigation, architecture insights, architecture health, and code intelligence.
+- Framework-aware architecture intelligence: candidate entry points, API route mapping, Python/Prisma/SQL relationship hints, and cross-module dependency summaries.
 - Static potential-issue checks for Python plus selected JavaScript/TypeScript security patterns.
 - Local Ollama explanations for source files, findings, and architecture summaries.
 - Project-scoped codebase Q&A using a local SQLite retrieval index. Python and JavaScript/TypeScript functions and classes are indexed as focused chunks where recognized; other files use bounded text chunks. Retrieval combines SQLite FTS5/BM25 keyword ranking with local Ollama vector embeddings using reciprocal-rank fusion. If the embedding model is unavailable, Q&A falls back to BM25/SQLite text search. The UI can clear a project's indexed chunks and embeddings.
