@@ -689,6 +689,11 @@ def delete_project_index(project_id: str) -> int:
         connection.execute("DELETE FROM code_embeddings WHERE project_id = ?", (project_id,))
         connection.execute("DELETE FROM code_index_files WHERE project_id = ?", (project_id,))
         connection.execute("DELETE FROM code_index_jobs WHERE project_id = ?", (project_id,))
+        bug_cache_exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'code_bug_findings'"
+        ).fetchone()
+        if bug_cache_exists:
+            connection.execute("DELETE FROM code_bug_findings WHERE project_id = ?", (project_id,))
         connection.commit()
         return cursor.rowcount
     finally:
