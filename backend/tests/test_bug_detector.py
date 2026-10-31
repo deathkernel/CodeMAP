@@ -39,6 +39,7 @@ def test_invalid_python_is_skipped_without_execution() -> None:
 def test_detects_unsafe_javascript_html_and_dynamic_execution() -> None:
     source = (
         "const html = userInput;\n"
+        "const result = eval(userInput);\n"
         "element.innerHTML = html;\n"
         "const run = new Function(userInput);\n"
         "root.dangerouslySetInnerHTML = { __html: html };\n"
@@ -46,7 +47,7 @@ def test_detects_unsafe_javascript_html_and_dynamic_execution() -> None:
     result = scan_for_bugs({"src/view.tsx": source})
     rule_ids = {item["rule_id"] for item in result["findings"]}
     assert "unsafe-innerhtml-assignment" in rule_ids
-    assert "dynamic-code-execution" not in rule_ids
+    assert "dynamic-code-execution" in rule_ids
     assert "dynamic-function-constructor" in rule_ids
     assert "react-dangerous-html" in rule_ids
 
