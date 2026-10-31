@@ -5,12 +5,13 @@ import base64
 import binascii
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, HttpUrl, Field
 
 from app.services.analyzer import analyze_sources, architecture_insights, architecture_health, code_intelligence, symbol_intelligence
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
+from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
 
 router = APIRouter(prefix="/api/repository", tags=["analysis"])
 MAX_ANALYZED_FILES = 120
@@ -149,3 +150,50 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
         "source_files": len(sources),
         "analysis_note": "Local folder analysis. Selected source text was sent only to this local CodeMap backend; files were not written to disk or executed.",
     }
+
+
+@router.post("/analyze-zip")
+async def analyze_zip_upload(file: UploadFile = File(...)):
+    """Analyze supported source files from a ZIP entirely in memory."""
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Upload a .zip file.")
+
+    try:
+        data = await file.read(MAX_ARCHIVE_BYTES + 1)
+        if len(data) > MAX_ARCHIVE_BYTES:
+            raise HTTPException(status_code=413, detail="ZIP exceeds the 50 MB upload limit.")
+
+        archive = read_zip_sources(data)
+        sources = archive["sources"]
+        graph = analyze_sources(sources)
+        bug_report = scan_for_bugs(sources)
+        symbols = symbol_intelligence(sources)
+        return {
+            "repository": file.filename[:-4] or "Uploaded ZIP",
+            "default_branch": "ZIP archive",
+            **graph,
+            "symbol_intelligence": symbols,
+            "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
+            "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
+            "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),
+            "bug_findings": bug_report["findings"],
+            "bug_stats": bug_report["stats"],
+            "bug_analysis_note": bug_report["note"],
+            "stats": {
+                **graph["stats"],
+                "inventory_files": archive["source_files"] + archive["files_skipped_by_limit"],
+                "files_not_fetched": archive["files_skipped_by_limit"],
+                "archive_entries": archive["archive_entries"],
+                "source_bytes_analyzed": archive["source_bytes"],
+            },
+            "source_contents": sources,
+            "source_files": archive["source_files"],
+            "analysis_note": (
+                "ZIP source files were analyzed in memory. Files were not extracted to disk or executed. "
+                f"{archive['files_skipped_by_limit']} supported files were skipped by analysis limits."
+            ),
+        }
+    except ArchiveError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await file.close()
