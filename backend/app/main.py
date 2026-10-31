@@ -11,6 +11,7 @@ from app.routes.analysis import router as analysis_router
 from app.routes.ai import router as ai_router
 from app.routes.repository import router as repository_router
 from app.routes.source import router as source_router
+from app.routes.reports import router as reports_router
 
 app = FastAPI(
     title="CodeMap API",
@@ -30,6 +31,7 @@ app.include_router(repository_router)
 app.include_router(analysis_router)
 app.include_router(source_router)
 app.include_router(ai_router)
+app.include_router(reports_router)
 
 
 @app.get("/api/health", tags=["system"])
