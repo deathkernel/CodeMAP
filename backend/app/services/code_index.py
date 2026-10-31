@@ -327,7 +327,7 @@ async def _ollama_embeddings(texts: list[str]) -> list[list[float]] | None:
             tags = await client.get(f"{base_url}/api/tags")
             tags.raise_for_status()
             installed = {item.get("name", "") for item in tags.json().get("models", [])}
-            if model not in installed:
+            if model not in installed and f"{model}:latest" not in installed:
                 return None
 
             response = await client.post(
