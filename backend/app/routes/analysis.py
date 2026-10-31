@@ -12,7 +12,7 @@ from app.services.analyzer import analyze_sources, architecture_insights, archit
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
-from app.services.code_index import index_project_sources, make_project_id
+from app.services.code_index import delete_project_index, index_project_sources, make_project_id
 
 router = APIRouter(prefix="/api/repository", tags=["analysis"])
 MAX_ANALYZED_FILES = 120
@@ -210,3 +210,15 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
         await file.close()
+
+
+
+@router.delete("/index/{project_id}")
+async def clear_project_index(project_id: str):
+    """Delete only the local retrieval chunks associated with one project."""
+    import re
+
+    if not re.fullmatch(r"[a-f0-9]{24}", project_id):
+        raise HTTPException(status_code=400, detail="Invalid project index identifier.")
+    deleted_chunks = delete_project_index(project_id)
+    return {"project_id": project_id, "deleted_chunks": deleted_chunks}
