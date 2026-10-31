@@ -666,11 +666,15 @@ def advanced_architecture_intelligence(
                     "framework": "Express-compatible router",
                 })
 
-            if name in {"route.ts", "route.js"}:
+            if name in {"route.ts", "route.js"} and (path.startswith("app/") or "/app/" in path):
                 frameworks.add("Next.js")
                 for match in re.finditer(r"\bexport\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b", source):
-                    route_directory = path.split("app/", 1)[1] if "app/" in path else path.split("/route.", 1)[0]
-                    route_path = "/" + route_directory.rsplit("/route.", 1)[0].strip("/") if "/route." in route_directory else "/" + route_directory.strip("/")
+                    route_directory = path.rsplit("/route.", 1)[0]
+                    if route_directory.startswith("app/"):
+                        route_directory = route_directory[len("app/"):]
+                    elif "/app/" in route_directory:
+                        route_directory = route_directory.split("/app/", 1)[1]
+                    route_path = "/" + route_directory.strip("/")
                     endpoints.append({
                         "path": path, "line": source.count("\n", 0, match.start()) + 1,
                         "method": match.group(1), "route": route_path,
