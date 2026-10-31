@@ -266,6 +266,9 @@ function Explorer() {
   const [codebaseClearLoading, setCodebaseClearLoading] = useState(false);
   const [codebaseError, setCodebaseError] = useState("");
   const [ollamaState, setOllamaState] = useState<"checking" | "ready" | "missing" | "offline">("checking");
+  const [reportStatus, setReportStatus] = useState("");
+  const [reportError, setReportError] = useState("");
+  const [reportComparison, setReportComparison] = useState<any>(null);
 
   useEffect(() => {
     let active = true;
@@ -814,6 +817,80 @@ function Explorer() {
     URL.revokeObjectURL(href);
   }
 
+  function exportJson() {
+    if (!result) return;
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json;charset=utf-8" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `codemap-${result.repository.replace(/[^a-z0-9-_]/gi, "-")}-analysis.json`;
+    anchor.click();
+    URL.revokeObjectURL(href);
+  }
+
+  async function exportPdf() {
+    if (!result) return;
+    setReportError("");
+    setReportStatus("Generating PDF report…");
+    try {
+      const response = await fetch(`${API_BASE}/api/reports/architecture.pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ result }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || "PDF report generation failed.");
+      }
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `codemap-${result.repository.replace(/[^a-z0-9-_]/gi, "-")}-report.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(href);
+      setReportStatus("PDF report downloaded.");
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Could not generate PDF report.");
+      setReportStatus("");
+    }
+  }
+
+  async function saveReportSnapshot() {
+    if (!result) return;
+    setReportError("");
+    setReportStatus("Saving analysis snapshot…");
+    try {
+      const response = await fetch(`${API_BASE}/api/reports/snapshots`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ result }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Could not save snapshot.");
+      setReportStatus(`Snapshot saved · ${payload.snapshot_id.slice(0, 8)}`);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Could not save snapshot.");
+      setReportStatus("");
+    }
+  }
+
+  async function compareReportSnapshots() {
+    if (!result) return;
+    setReportError("");
+    setReportStatus("Comparing latest snapshots…");
+    try {
+      const response = await fetch(`${API_BASE}/api/reports/compare/${encodeURIComponent(result.project_id)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Save two snapshots before comparing.");
+      setReportComparison(payload);
+      setReportStatus("Latest two snapshots compared.");
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Could not compare snapshots.");
+      setReportStatus("");
+    }
+  }
+
   async function exportPng() {
     if (!result || !visibleGraphNodes.length) return;
     const width = 205;
@@ -981,8 +1058,36 @@ function Explorer() {
                 <div className="flex flex-wrap gap-2">
                   <button onClick={exportPng} className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200 hover:bg-indigo-500/20">Export PNG</button>
                   <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export Mermaid</button>
+                  <button onClick={exportJson} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Export JSON</button>
+                  <button onClick={exportPdf} className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200 hover:bg-cyan-500/20">PDF report</button>
+                  <button onClick={saveReportSnapshot} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Save snapshot</button>
+                  <button onClick={compareReportSnapshots} className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 hover:bg-amber-500/20">Compare snapshots</button>
                 </div>
               </div>
+              {(reportStatus || reportError) && <div className="border-b border-white/10 px-4 py-2">
+                {reportStatus && <p className="text-[11px] text-emerald-300">{reportStatus}</p>}
+                {reportError && <p role="alert" className="text-[11px] text-rose-300">{reportError}</p>}
+              </div>}
+              {reportComparison && <div className="border-b border-white/10 px-4 py-4">
+                <div className="mb-2 text-xs font-semibold text-amber-200">Before / after comparison</div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[
+                    ["Health score", reportComparison.changes.health_score],
+                    ["Potential findings", reportComparison.changes.bugs_total],
+                    ["High-risk modules", reportComparison.changes.high_risk_modules],
+                    ["High severity", reportComparison.changes.bugs_high],
+                    ["Dependencies", reportComparison.changes.dependencies],
+                    ["Circular groups", reportComparison.changes.circular_groups],
+                  ].map(([label, change]: any) => (
+                    <div key={label} className="rounded-lg bg-black/20 p-2">
+                      <div className="text-[10px] text-slate-500">{label}</div>
+                      <div className="mt-1 text-sm font-semibold tabular-nums">{change.before} → {change.after}</div>
+                      <div className="text-[10px] text-slate-400">Change: {change.delta > 0 ? "+" : ""}{change.delta}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[10px] text-slate-500">{reportComparison.note}</p>
+              </div>}
               <div className="border-b border-white/10 px-4 py-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold uppercase tracking-wider text-[10px] text-slate-500">Folder navigation</span>
