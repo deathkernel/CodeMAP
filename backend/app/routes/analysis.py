@@ -107,7 +107,7 @@ async def analyze_github(request: AnalyzeRequest):
 
 @router.post("/analyze-folder")
 async def analyze_local_folder(request: FolderAnalyzeRequest):
-    """Analyze browser-selected local folder contents without storing or executing files."""
+    """Analyze browser-selected local folder contents without extracting or executing files."""
     from pathlib import PurePosixPath
 
     sources: dict[str, str] = {}
@@ -157,7 +157,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
             "files_not_fetched": 0,
         },
         "source_files": len(sources),
-        "analysis_note": "Local folder analysis. Selected source text was sent only to this local CodeMap backend; files were not written to disk or executed.",
+        "analysis_note": "Local folder analysis. Files were not executed or copied as raw files; bounded source chunks are stored in the local SQLite retrieval index for project Q&A.",
     }
 
 
