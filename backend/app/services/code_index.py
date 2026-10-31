@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import os
 import re
@@ -54,7 +55,8 @@ def make_project_id(name: str, branch: str, sources: dict[str, str]) -> str:
     return digest.hexdigest()[:24]
 
 
-def _chunks(source: str):
+def _text_chunks(source: str):
+    """Split non-Python source into bounded, overlapping line-aware chunks."""
     start = 0
     while start < len(source):
         end = min(start + CHUNK_CHARS, len(source))
@@ -70,6 +72,76 @@ def _chunks(source: str):
         start = max(start + 1, end - CHUNK_OVERLAP)
 
 
+def _line_ranges(content: str, start_line: int):
+    """Keep each logical unit bounded while preserving its source line."""
+    lines = content.splitlines()
+    chunk_lines: list[str] = []
+    chunk_start = start_line
+    current_size = 0
+
+    for offset, line in enumerate(lines):
+        line_size = len(line) + 1
+        if chunk_lines and current_size + line_size > CHUNK_CHARS:
+            yield chunk_start, "\n".join(chunk_lines)
+            chunk_lines = []
+            chunk_start = start_line + offset
+            current_size = 0
+        chunk_lines.append(line)
+        current_size += line_size
+
+    if chunk_lines:
+        yield chunk_start, "\n".join(chunk_lines)
+
+
+def _python_chunks(source: str):
+    """Prefer top-level Python classes/functions as retrieval units."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        yield from _text_chunks(source)
+        return
+
+    lines = source.splitlines()
+    definitions = [
+        node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and hasattr(node, "end_lineno")
+    ]
+    if not definitions:
+        yield from _text_chunks(source)
+        return
+
+    ranges: list[tuple[int, str]] = []
+    cursor = 1
+    for node in definitions:
+        start_line = node.lineno
+        end_line = node.end_lineno or node.lineno
+        if start_line > cursor:
+            gap = "\n".join(lines[cursor - 1:start_line - 1]).strip()
+            if gap:
+                ranges.extend(_line_ranges(gap, cursor))
+        body = "\n".join(lines[start_line - 1:end_line]).strip()
+        if body:
+            ranges.extend(_line_ranges(body, start_line))
+        cursor = end_line + 1
+
+    if cursor <= len(lines):
+        tail = "\n".join(lines[cursor - 1:]).strip()
+        if tail:
+            ranges.extend(_line_ranges(tail, cursor))
+
+    if not ranges:
+        yield from _text_chunks(source)
+        return
+    yield from ranges
+
+
+def _chunks(source: str, path: str):
+    if path.lower().endswith(".py"):
+        yield from _python_chunks(source)
+    else:
+        yield from _text_chunks(source)
+
 def index_project_sources(project_id: str, sources: dict[str, str]) -> int:
     """Replace a project's local text index with bounded overlapping source chunks."""
     connection, has_fts = _connect()
@@ -78,7 +150,7 @@ def index_project_sources(project_id: str, sources: dict[str, str]) -> int:
         connection.execute(f"DELETE FROM {table} WHERE project_id = ?", (project_id,))
         rows = []
         for path, source in sources.items():
-            for start_line, content in _chunks(source):
+            for start_line, content in _chunks(source, path):
                 rows.append((project_id, path, start_line, content))
         connection.executemany(
             f"INSERT INTO {table} (project_id, path, start_line, content) VALUES (?, ?, ?, ?)",
