@@ -12,6 +12,7 @@ from app.services.analyzer import analyze_sources, architecture_insights, archit
 from app.services.bug_detector import scan_for_bugs
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
+from app.services.code_index import index_project_sources, make_project_id
 
 router = APIRouter(prefix="/api/repository", tags=["analysis"])
 MAX_ANALYZED_FILES = 120
@@ -77,10 +78,14 @@ async def analyze_github(request: AnalyzeRequest):
             except (binascii.Error, ValueError):
                 continue
 
+    project_id = make_project_id(inventory["repository"], inventory["default_branch"], sources)
+    indexed_chunks = index_project_sources(project_id, sources)
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
     symbols = symbol_intelligence(sources)
     return {
+        "project_id": project_id,
+        "indexed_chunks": indexed_chunks,
         "repository": inventory["repository"],
         "default_branch": inventory["default_branch"],
         **graph,
@@ -128,10 +133,14 @@ async def analyze_local_folder(request: FolderAnalyzeRequest):
     if not sources:
         raise HTTPException(status_code=400, detail="No supported source files were found in this folder.")
 
+    project_id = make_project_id(request.folder_name, "Local folder", sources)
+    indexed_chunks = index_project_sources(project_id, sources)
     graph = analyze_sources(sources)
     bug_report = scan_for_bugs(sources)
     symbols = symbol_intelligence(sources)
     return {
+        "project_id": project_id,
+        "indexed_chunks": indexed_chunks,
         "repository": request.folder_name,
         "default_branch": "Local folder",
         **graph,
@@ -165,10 +174,14 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
 
         archive = read_zip_sources(data)
         sources = archive["sources"]
+        project_id = make_project_id(file.filename[:-4] or "Uploaded ZIP", "ZIP archive", sources)
+        indexed_chunks = index_project_sources(project_id, sources)
         graph = analyze_sources(sources)
         bug_report = scan_for_bugs(sources)
         symbols = symbol_intelligence(sources)
         return {
+            "project_id": project_id,
+            "indexed_chunks": indexed_chunks,
             "repository": file.filename[:-4] or "Uploaded ZIP",
             "default_branch": "ZIP archive",
             **graph,
