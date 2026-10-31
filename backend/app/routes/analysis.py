@@ -202,7 +202,7 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
             "source_contents": sources,
             "source_files": archive["source_files"],
             "analysis_note": (
-                "ZIP source files were analyzed in memory. Files were not extracted to disk or executed. "
+                "ZIP source files were analyzed in memory and never extracted or executed. Bounded source chunks are persisted in local SQLite for project Q&A. "
                 f"{archive['files_skipped_by_limit']} supported files were skipped by analysis limits."
             ),
         }
