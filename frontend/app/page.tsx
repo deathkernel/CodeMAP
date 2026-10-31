@@ -416,7 +416,7 @@ function Explorer() {
     });
     const walk = (adjacency: Map<string, string[]>) => {
       const depths = new Map<string, number>();
-      const queue = (adjacency.get(selected) || []).map((path) => [path, 1] as const);
+      const queue: Array<[string, number]> = (adjacency.get(selected) || []).map((path) => [path, 1]);
       while (queue.length) {
         const [path, depth] = queue.shift()!;
         const previous = depths.get(path);
