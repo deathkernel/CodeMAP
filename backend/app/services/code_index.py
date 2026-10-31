@@ -117,3 +117,15 @@ def search_project_sources(project_id: str, query: str, limit: int = DEFAULT_RES
         ]
     finally:
         connection.close()
+
+
+def delete_project_index(project_id: str) -> int:
+    """Delete all locally stored source chunks for one project."""
+    connection, has_fts = _connect()
+    table = "code_chunks" if has_fts else "code_chunks_plain"
+    try:
+        cursor = connection.execute(f"DELETE FROM {table} WHERE project_id = ?", (project_id,))
+        connection.commit()
+        return cursor.rowcount
+    finally:
+        connection.close()
