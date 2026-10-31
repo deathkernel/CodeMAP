@@ -258,7 +258,7 @@ def _cross_file_python_findings(sources: dict[str, str]) -> list[dict[str, Any]]
     for path, source in sources.items():
         if not path.lower().endswith(".py"):
             continue
-        parts = path.replace("\\\\", "/").split("/")
+        parts = path.replace("\\", "/").split("/")
         filename = parts[-1]
         directories = parts[:-1]
         if filename == "__init__.py":
@@ -275,7 +275,7 @@ def _cross_file_python_findings(sources: dict[str, str]) -> list[dict[str, Any]]
 
     findings: list[dict[str, Any]] = []
     for path, tree in parsed_files:
-        parts = path.replace("\\\\", "/").split("/")
+        parts = path.replace("\\", "/").split("/")
         filename = parts[-1]
         package_parts = parts[:-1]
         if filename == "__init__.py":
