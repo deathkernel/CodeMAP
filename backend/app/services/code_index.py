@@ -303,15 +303,30 @@ def index_project_sources_incremental(
                 (project_id, path),
             )
 
-        rows = []
+        indexed_chunks = 0
+        batch: list[tuple[str, str, int, str]] = []
         for path in sorted(changed):
             for start_line, chunk in _chunks(sources[path], path):
-                rows.append((project_id, path, start_line, chunk))
+                batch.append((project_id, path, start_line, chunk))
+                if len(batch) >= 500:
+                    connection.executemany(
+                        f"INSERT INTO {table} (project_id, path, start_line, content) VALUES (?, ?, ?, ?)",
+                        batch,
+                    )
+                    indexed_chunks += len(batch)
+                    batch.clear()
             connection.execute(
                 "INSERT OR REPLACE INTO code_index_files "
                 "(project_id, path, content_hash, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
                 (project_id, path, current[path]),
             )
+
+        if batch:
+            connection.executemany(
+                f"INSERT INTO {table} (project_id, path, start_line, content) VALUES (?, ?, ?, ?)",
+                batch,
+            )
+            indexed_chunks += len(batch)
 
         for path in removed:
             connection.execute(
@@ -319,17 +334,13 @@ def index_project_sources_incremental(
                 (project_id, path),
             )
 
-        connection.executemany(
-            f"INSERT INTO {table} (project_id, path, start_line, content) VALUES (?, ?, ?, ?)",
-            rows,
-        )
         connection.commit()
         total_files = len(current)
         return {
             "changed_files": len(changed),
             "removed_files": len(removed),
             "unchanged_files": max(0, total_files - len(changed)),
-            "indexed_chunks": len(rows),
+            "indexed_chunks": indexed_chunks,
             "total_files": total_files,
         }
     finally:
