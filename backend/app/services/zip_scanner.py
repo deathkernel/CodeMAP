@@ -106,6 +106,7 @@ def read_zip_sources(data: bytes) -> dict[str, Any]:
     sources: dict[str, str] = {}
     total_source_bytes = 0
     skipped_by_limit = 0
+    archive_entries = len(archive.infolist())
 
     try:
         for info in archive.infolist():
@@ -144,7 +145,7 @@ def read_zip_sources(data: bytes) -> dict[str, Any]:
 
     return {
         "sources": sources,
-        "archive_entries": len(archive.infolist()) if False else None,
+        "archive_entries": archive_entries,
         "source_files": len(sources),
         "source_bytes": total_source_bytes,
         "files_skipped_by_limit": skipped_by_limit,
