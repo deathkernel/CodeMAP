@@ -34,3 +34,23 @@ def test_secret_value_is_never_returned() -> None:
 def test_invalid_python_is_skipped_without_execution() -> None:
     result = scan_for_bugs({"broken.py": "this is not valid python !!!"})
     assert result["findings"] == []
+
+
+def test_detects_unsafe_javascript_html_and_dynamic_execution() -> None:
+    source = (
+        "const html = userInput;\n"
+        "element.innerHTML = html;\n"
+        "const run = new Function(userInput);\n"
+        "root.dangerouslySetInnerHTML = { __html: html };\n"
+    )
+    result = scan_for_bugs({"src/view.tsx": source})
+    rule_ids = {item["rule_id"] for item in result["findings"]}
+    assert "unsafe-innerhtml-assignment" in rule_ids
+    assert "dynamic-code-execution" not in rule_ids
+    assert "dynamic-function-constructor" not in rule_ids
+    assert "react-dangerous-html" in rule_ids
+
+
+def test_detects_tls_validation_disabled_in_javascript() -> None:
+    result = scan_for_bugs({"src/client.js": "const options = { rejectUnauthorized: false };\n"})
+    assert any(item["rule_id"] == "tls-certificate-validation-disabled" for item in result["findings"])
