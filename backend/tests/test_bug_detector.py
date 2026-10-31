@@ -47,7 +47,7 @@ def test_detects_unsafe_javascript_html_and_dynamic_execution() -> None:
     rule_ids = {item["rule_id"] for item in result["findings"]}
     assert "unsafe-innerhtml-assignment" in rule_ids
     assert "dynamic-code-execution" not in rule_ids
-    assert "dynamic-function-constructor" not in rule_ids
+    assert "dynamic-function-constructor" in rule_ids
     assert "react-dangerous-html" in rule_ids
 
 
