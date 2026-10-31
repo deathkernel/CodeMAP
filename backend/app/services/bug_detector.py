@@ -5,7 +5,10 @@ The scanner parses source text only. It never imports or executes repository cod
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
 import re
+import sqlite3
 from typing import Any
 
 SECRET_PATTERN = re.compile(
@@ -380,7 +383,11 @@ def _cross_file_js_findings(sources: dict[str, str]) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str, Any]:
+def scan_for_bugs(
+    sources: dict[str, str],
+    max_findings: int = 500,
+    include_cross_file: bool = True,
+) -> dict[str, Any]:
     """Scan bounded source strings and return explainable static findings."""
     findings: list[dict[str, Any]] = []
 
@@ -410,8 +417,9 @@ def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str,
                 "Move credentials to environment variables or a secret manager, then rotate exposed credentials.",
             ))
 
-    findings.extend(_cross_file_python_findings(sources))
-    findings.extend(_cross_file_js_findings(sources))
+    if include_cross_file:
+        findings.extend(_cross_file_python_findings(sources))
+        findings.extend(_cross_file_js_findings(sources))
 
     findings.sort(key=lambda item: (
         {"high": 0, "medium": 1, "low": 2}.get(item["severity"], 3),
@@ -435,3 +443,80 @@ def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str,
         },
         "note": "Static pattern checks only. Findings require human review and are not proof of an exploitable bug.",
     }
+
+
+def scan_for_bugs_incremental(
+    project_id: str,
+    sources: dict[str, str],
+    max_findings: int = 500,
+) -> dict[str, Any]:
+    """Reuse per-file bug findings for unchanged files and refresh only changed files."""
+    from app.services.code_index import _database_path
+
+    connection = sqlite3.connect(_database_path(), timeout=30)
+    try:
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS code_bug_findings ("
+            "project_id TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL, "
+            "findings_json TEXT NOT NULL, PRIMARY KEY (project_id, path))"
+        )
+        existing_rows = connection.execute(
+            "SELECT path, content_hash FROM code_bug_findings WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+        existing = {path: digest for path, digest in existing_rows}
+        current_paths = set(sources)
+
+        for path in set(existing) - current_paths:
+            connection.execute(
+                "DELETE FROM code_bug_findings WHERE project_id = ? AND path = ?",
+                (project_id, path),
+            )
+
+        for path, source in sources.items():
+            digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+            if existing.get(path) == digest:
+                continue
+            local_report = scan_for_bugs({path: source}, include_cross_file=False)
+            connection.execute(
+                "INSERT OR REPLACE INTO code_bug_findings "
+                "(project_id, path, content_hash, findings_json) VALUES (?, ?, ?, ?)",
+                (project_id, path, digest, json.dumps(local_report["findings"])),
+            )
+
+        connection.commit()
+        rows = connection.execute(
+            "SELECT findings_json FROM code_bug_findings WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+        findings = [
+            item
+            for row in rows
+            for item in json.loads(row[0])
+        ]
+    finally:
+        connection.close()
+
+    findings.extend(_cross_file_python_findings(sources))
+    findings.extend(_cross_file_js_findings(sources))
+    findings.sort(key=lambda item: (
+        {"high": 0, "medium": 1, "low": 2}.get(item["severity"], 3),
+        item["path"], item["line"], item["rule_id"],
+    ))
+    findings = findings[:max_findings]
+    counts = {
+        "high": sum(item["severity"] == "high" for item in findings),
+        "medium": sum(item["severity"] == "medium" for item in findings),
+        "low": sum(item["severity"] == "low" for item in findings),
+    }
+    return {
+        "findings": findings,
+        "stats": {
+            "total": len(findings),
+            "by_severity": counts,
+            "files_scanned": len(sources),
+            "truncated": len(findings) >= max_findings,
+        },
+        "note": "Incremental static pattern checks. Unchanged-file findings are reused from the local SQLite cache; cross-file import checks are refreshed for the current source snapshot. Findings require human review and are not proof of an exploitable bug.",
+    }
+
