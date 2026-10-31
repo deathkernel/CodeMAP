@@ -134,3 +134,42 @@ def test_architecture_explainer_rejects_oversized_summary() -> None:
         "bug_stats": {},
     })
     assert response.status_code == 413
+
+
+
+def test_codebase_qa_uses_retrieved_source_chunks(monkeypatch) -> None:
+    def fake_search(project_id: str, query: str, limit: int = 6):
+        assert project_id == "project123"
+        assert "authentication" in query
+        return [{
+            "path": "app/auth.py",
+            "start_line": 12,
+            "content": "def authenticate(token): return validate(token)",
+            "score": -1.2,
+        }]
+
+    async def fake_generate(prompt: str):
+        assert "app/auth.py" in prompt
+        assert "validate(token)" in prompt
+        return "local-model", False, "Authentication is handled in app/auth.py."
+
+    monkeypatch.setattr("app.routes.ai.search_project_sources", fake_search)
+    monkeypatch.setattr("app.routes.ai._generate_local", fake_generate)
+    response = client.post("/api/ai/ask-codebase", json={
+        "project_id": "project123",
+        "repository": "demo-app",
+        "question": "How does authentication work?",
+    })
+    assert response.status_code == 200
+    assert response.json()["sources"] == [{"path": "app/auth.py", "start_line": 12}]
+    assert "app/auth.py" in response.json()["answer"]
+
+
+def test_codebase_qa_returns_not_found_without_retrieved_context(monkeypatch) -> None:
+    monkeypatch.setattr("app.routes.ai.search_project_sources", lambda *args, **kwargs: [])
+    response = client.post("/api/ai/ask-codebase", json={
+        "project_id": "project123",
+        "repository": "demo-app",
+        "question": "Where is authentication handled?",
+    })
+    assert response.status_code == 404
