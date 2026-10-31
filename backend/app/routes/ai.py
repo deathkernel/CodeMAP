@@ -38,6 +38,7 @@ class ExplainArchitectureRequest(BaseModel):
     repository: str = Field(min_length=1, max_length=200)
     stats: dict[str, int]
     architecture_insights: dict[str, Any]
+    advanced_architecture: dict[str, Any]
     architecture_health: dict[str, Any]
     code_intelligence: dict[str, Any]
     symbol_stats: dict[str, int]
@@ -229,6 +230,7 @@ async def explain_architecture(request: ExplainArchitectureRequest):
         "repository": request.repository,
         "stats": request.stats,
         "architecture_insights": request.architecture_insights,
+        "advanced_architecture": request.advanced_architecture,
         "architecture_health": request.architecture_health,
         "code_intelligence": request.code_intelligence,
         "symbol_stats": request.symbol_stats,
