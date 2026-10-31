@@ -527,3 +527,200 @@ def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dic
         },
         "symbol_note": "Static symbol extraction. Python declarations and calls use AST; JavaScript/TypeScript uses line-based patterns. Dead functions are top-level candidates with no resolved incoming calls, not proof of unused code. Duplicate groups compare normalized Python function bodies only. Inheritance links are local name matches and may be incomplete.",
     }
+
+
+
+def advanced_architecture_intelligence(
+    sources: dict[str, str],
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Infer framework-aware entry points, API routes, data relations, and module coupling."""
+    import json
+
+    frameworks: set[str] = set()
+    endpoints: list[dict[str, Any]] = []
+    database_relations: list[dict[str, Any]] = []
+    entry_points: list[dict[str, str]] = []
+    known_paths = {node["path"] for node in nodes}
+
+    package_data: dict[str, Any] = {}
+    if "package.json" in sources:
+        try:
+            package_data = json.loads(sources["package.json"])
+        except (ValueError, TypeError):
+            package_data = {}
+        dependencies = {
+            **package_data.get("dependencies", {}),
+            **package_data.get("devDependencies", {}),
+        }
+        for package, framework in (
+            ("next", "Next.js"), ("express", "Express"), ("fastify", "Fastify"),
+            ("@nestjs/core", "NestJS"), ("koa", "Koa"), ("hono", "Hono"),
+            ("react", "React"),
+        ):
+            if package in dependencies:
+                frameworks.add(framework)
+        main_file = package_data.get("main")
+        if isinstance(main_file, str) and main_file in known_paths:
+            entry_points.append({"path": main_file, "framework": "Node.js", "reason": "package.json main field"})
+
+    for manifest, patterns in (
+        ("requirements.txt", (("fastapi", "FastAPI"), ("flask", "Flask"), ("django", "Django"))),
+        ("pyproject.toml", (("fastapi", "FastAPI"), ("flask", "Flask"), ("django", "Django"))),
+        ("Pipfile", (("fastapi", "FastAPI"), ("flask", "Flask"), ("django", "Django"))),
+        ("go.mod", (("gin-gonic/gin", "Gin"), ("labstack/echo", "Echo"), ("gofiber/fiber", "Fiber"))),
+        ("Cargo.toml", (("actix-web", "Actix Web"), ("axum", "Axum"), ("rocket", "Rocket"))),
+    ):
+        manifest_text = sources.get(manifest, "").lower()
+        for needle, framework in patterns:
+            if needle in manifest_text:
+                frameworks.add(framework)
+
+    if any(path.endswith("manage.py") for path in known_paths):
+        frameworks.add("Django")
+    if any(path.endswith(("next.config.js", "next.config.mjs", "next.config.ts")) for path in known_paths):
+        frameworks.add("Next.js")
+
+    for path in sorted(known_paths):
+        name = PurePosixPath(path).name.lower()
+        source = sources.get(path, "")
+        suffix = PurePosixPath(path).suffix.lower()
+
+        if name in {"manage.py", "wsgi.py", "asgi.py"}:
+            entry_points.append({"path": path, "framework": "Django", "reason": "Django deployment or management entry point"})
+        if name in {"main.py", "app.py"} and any(framework in frameworks for framework in ("FastAPI", "Flask")):
+            framework = next(framework for framework in ("FastAPI", "Flask") if framework in frameworks)
+            entry_points.append({"path": path, "framework": framework, "reason": "Conventional Python web application module"})
+        if name in {"main.tsx", "main.jsx", "index.tsx", "index.jsx"} and any(framework in frameworks for framework in ("React", "Next.js")):
+            framework = next(framework for framework in ("React", "Next.js") if framework in frameworks)
+            entry_points.append({"path": path, "framework": framework, "reason": "Conventional frontend bootstrap file"})
+        if path.endswith(("app/page.tsx", "app/page.jsx", "src/app/page.tsx", "src/app/page.jsx")) and "Next.js" in frameworks:
+            entry_points.append({"path": path, "framework": "Next.js", "reason": "Next.js App Router page"})
+        if path.endswith(("pages/index.tsx", "pages/index.jsx", "src/pages/index.tsx", "src/pages/index.jsx")) and "Next.js" in frameworks:
+            entry_points.append({"path": path, "framework": "Next.js", "reason": "Next.js Pages Router page"})
+
+        if suffix == ".py":
+            route_pattern = re.compile(
+                r"@(?:\w+\.)?(get|post|put|patch|delete|options|head|route)\s*\(\s*['""]([^'""]+)['""]([^)]*)\)",
+                re.IGNORECASE,
+            )
+            for match in route_pattern.finditer(source):
+                method = match.group(1).upper()
+                methods_match = re.search(r"methods\s*=\s*\[([^]]+)\]", match.group(3), re.IGNORECASE)
+                methods = re.findall(r"['""]([A-Z]+)['""]", methods_match.group(1)) if methods_match else []
+                if method == "ROUTE":
+                    methods = methods or ["GET"]
+                for verb in methods or [method]:
+                    endpoints.append({
+                        "path": path, "line": source.count("\n", 0, match.start()) + 1,
+                        "method": verb, "route": match.group(2),
+                        "framework": "FastAPI" if "FastAPI" in frameworks else "Flask/Django",
+                    })
+
+            for match in re.finditer(r"ForeignKey\s*\(\s*['""]([^'""]+)['""]", source):
+                database_relations.append({
+                    "path": path, "line": source.count("\n", 0, match.start()) + 1,
+                    "source_model": PurePosixPath(path).stem,
+                    "target": match.group(1), "kind": "Python ForeignKey",
+                })
+
+        if suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
+            route_pattern = re.compile(
+                r"\b(?:app|router|server|api)\.(get|post|put|patch|delete|options|head)\s*\(\s*['""]([^'""]+)['""]",
+                re.IGNORECASE,
+            )
+            for match in route_pattern.finditer(source):
+                endpoints.append({
+                    "path": path, "line": source.count("\n", 0, match.start()) + 1,
+                    "method": match.group(1).upper(), "route": match.group(2),
+                    "framework": "Express-compatible router",
+                })
+
+            if name in {"route.ts", "route.js"}:
+                for match in re.finditer(r"\bexport\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b", source):
+                    route_path = "/" + path.split("/route.")[0].split("/app/")[-1].strip("/")
+                    endpoints.append({
+                        "path": path, "line": source.count("\n", 0, match.start()) + 1,
+                        "method": match.group(1), "route": route_path,
+                        "framework": "Next.js App Router",
+                    })
+                    entry_points.append({
+                        "path": path, "framework": "Next.js",
+                        "reason": "App Router API route handler",
+                    })
+
+        if suffix == ".prisma":
+            current_model = ""
+            for line_number, line in enumerate(source.splitlines(), 1):
+                model_match = re.match(r"\s*model\s+(\w+)\s*\{", line)
+                if model_match:
+                    current_model = model_match.group(1)
+                    continue
+                relation_match = re.match(r"\s*([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\??\s+@relation\b", line)
+                if current_model and relation_match:
+                    database_relations.append({
+                        "path": path, "line": line_number,
+                        "source_model": current_model, "target": relation_match.group(1),
+                        "kind": "Prisma relation",
+                    })
+                if line.strip() == "}":
+                    current_model = ""
+
+        sql_pattern = re.compile(
+            r"FOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[""]?(\w+)",
+            re.IGNORECASE,
+        )
+        for match in sql_pattern.finditer(source):
+            database_relations.append({
+                "path": path, "line": source.count("\n", 0, match.start()) + 1,
+                "source_model": "SQL table", "target": match.group(1), "kind": "SQL foreign key",
+            })
+
+    unique_entries = {
+        (item["path"], item["framework"], item["reason"]): item
+        for item in entry_points
+    }
+    unique_endpoints = {
+        (item["path"], item["line"], item["method"], item["route"]): item
+        for item in endpoints
+    }
+    unique_relations = {
+        (item["path"], item["line"], item["source_model"], item["target"], item["kind"]): item
+        for item in database_relations
+    }
+
+    def module_name(path: str) -> str:
+        parts = PurePosixPath(path).parts
+        return parts[0] if len(parts) > 1 else "(root)"
+
+    module_edges: dict[tuple[str, str], int] = {}
+    for edge in edges:
+        source_path, target_path = edge.get("source"), edge.get("target")
+        if source_path not in known_paths or target_path not in known_paths:
+            continue
+        source_module, target_module = module_name(source_path), module_name(target_path)
+        if source_module != target_module:
+            key = (source_module, target_module)
+            module_edges[key] = module_edges.get(key, 0) + 1
+
+    module_dependencies = [
+        {"source": source, "target": target, "imports": count}
+        for (source, target), count in sorted(module_edges.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+    return {
+        "frameworks": sorted(frameworks),
+        "entry_points": sorted(unique_entries.values(), key=lambda item: (item["path"], item["framework"])),
+        "api_endpoints": sorted(unique_endpoints.values(), key=lambda item: (item["path"], item["line"], item["method"])),
+        "database_relations": sorted(unique_relations.values(), key=lambda item: (item["path"], item["line"])),
+        "module_dependencies": module_dependencies,
+        "stats": {
+            "frameworks_detected": len(frameworks),
+            "entry_points": len(unique_entries),
+            "api_endpoints": len(unique_endpoints),
+            "database_relations": len(unique_relations),
+            "cross_module_links": len(module_dependencies),
+        },
+        "note": "Framework, entry-point, endpoint, and database relationship results are static candidates inferred from manifests and source patterns. Dynamic registration, generated routes, ORM conventions, and files outside the analyzed set may be missed.",
+    }
