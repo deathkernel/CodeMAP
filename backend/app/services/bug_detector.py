@@ -15,6 +15,7 @@ PLACEHOLDERS = {"your_api_key", "replace_me", "changeme", "example", "placeholde
 
 JS_RISK_PATTERNS = (
     (re.compile(r"\beval\s*\("), "dynamic-code-execution", "Dynamic code execution", "high", "eval() executes a string as code and can create a code-injection risk.", "Avoid eval(); parse data as data and use explicit, allowlisted operations."),
+    (re.compile(r"\bnew\s+Function\s*\("), "dynamic-function-constructor", "Dynamic function construction", "high", "The Function constructor compiles a string into executable code.", "Replace dynamically generated code with explicit functions or a safe expression parser."),
     (re.compile(r"\.innerHTML\s*="), "unsafe-innerhtml-assignment", "Potentially unsafe innerHTML assignment", "high", "Assigning to innerHTML parses a string as HTML; untrusted content can create cross-site scripting risk.", "Prefer textContent or sanitize HTML with a well-maintained allowlist-based sanitizer."),
     (re.compile(r"\bdangerouslySetInnerHTML\s*="), "react-dangerous-html", "React dangerouslySetInnerHTML", "high", "This React escape hatch inserts raw HTML and can create cross-site scripting risk if content is not sanitized.", "Avoid raw HTML where possible; otherwise sanitize content before rendering."),
     (re.compile(r"\brejectUnauthorized\s*:\s*false"), "tls-certificate-validation-disabled", "TLS certificate validation disabled", "high", "TLS certificate validation is disabled, making man-in-the-middle attacks easier.", "Keep certificate validation enabled and configure trusted certificates correctly."),
