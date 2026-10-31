@@ -177,8 +177,10 @@ async def analyze_local_folder(request: FolderAnalyzeRequest, background_tasks: 
     return {
         "project_id": project_id,
         "indexed_chunks": indexed_chunks,
+        "index_update": index_update,
         "indexed_embeddings": indexed_embeddings,
         "semantic_index_available": indexed_embeddings > 0,
+        "embedding_job": {"job_id": embedding_job["job_id"], "status": embedding_job["status"]},
         "repository": request.folder_name,
         "default_branch": "Local folder",
         **graph,
