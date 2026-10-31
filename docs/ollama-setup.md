@@ -28,3 +28,10 @@ Source previews are limited to 256 KB and explanation requests to 20,000 charact
 ## AI-assisted bug explanations
 
 Each static finding can be sent to the configured local Ollama model for a deeper explanation and a focused fix suggestion. The model is instructed to treat repository source as untrusted data and to describe scanner findings as heuristics, not confirmed vulnerabilities. Review suggested changes before applying them.
+
+
+## Architecture explanations and codebase Q&A
+
+The Architecture intelligence panel can ask the configured local model to explain the static architecture report. Codebase Q&A uses the local SQLite retrieval index created during repository, folder, or ZIP analysis. It retrieves a small set of relevant source chunks and sends only those excerpts, plus the question, to Ollama; it does not send the entire repository for each question.
+
+The retrieval index uses SQLite FTS5/BM25 when available, with a simple local text-search fallback. It is keyword-based rather than semantic vector search and does not require an additional embedding model. Use **Clear index** in the Q&A panel to delete the current project's stored chunks.
