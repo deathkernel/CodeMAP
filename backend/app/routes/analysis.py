@@ -157,7 +157,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest, background_tasks: 
             raise HTTPException(status_code=413, detail=f"File exceeds 256 KB limit: {item.path}")
         total_bytes += encoded_size
         if total_bytes > MAX_FOLDER_TOTAL_BYTES:
-            raise HTTPException(status_code=413, detail="Selected source files exceed the 8 MB analysis limit.")
+            raise HTTPException(status_code=413, detail="Selected source files exceed the 64 MB analysis limit.")
         sources[item.path] = item.content
 
     if not sources:
@@ -217,9 +217,9 @@ async def analyze_zip_upload(background_tasks: BackgroundTasks, file: UploadFile
         index_update = index_project_sources_incremental(project_id, sources)
         indexed_chunks = index_update["indexed_chunks"]
         embedding_job = create_embedding_job(project_id)
-    if embedding_job["created"]:
-        background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
-    indexed_embeddings = count_project_embeddings(project_id)
+        if embedding_job["created"]:
+            background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
+        indexed_embeddings = count_project_embeddings(project_id)
         graph = analyze_sources(sources)
         bug_report = scan_for_bugs(sources)
         symbols = symbol_intelligence(sources)
