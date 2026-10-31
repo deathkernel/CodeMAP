@@ -667,8 +667,10 @@ def advanced_architecture_intelligence(
                 })
 
             if name in {"route.ts", "route.js"}:
+                frameworks.add("Next.js")
                 for match in re.finditer(r"\bexport\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b", source):
-                    route_path = "/" + path.split("/route.")[0].split("/app/")[-1].strip("/")
+                    route_directory = path.split("app/", 1)[1] if "app/" in path else path.split("/route.", 1)[0]
+                    route_path = "/" + route_directory.rsplit("/route.", 1)[0].strip("/") if "/route." in route_directory else "/" + route_directory.strip("/")
                     endpoints.append({
                         "path": path, "line": source.count("\n", 0, match.start()) + 1,
                         "method": match.group(1), "route": route_path,
