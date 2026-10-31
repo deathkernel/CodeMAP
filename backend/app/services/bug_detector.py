@@ -252,6 +252,49 @@ def _cross_file_python_findings(sources: dict[str, str]) -> list[dict[str, Any]]
     return findings
 
 
+
+def _cross_file_js_findings(sources: dict[str, str]) -> list[dict[str, Any]]:
+    """Resolve explicit relative JS/TS imports against files in the analyzed source set."""
+    import posixpath
+
+    source_paths = {
+        path.replace("\\", "/")
+        for path in sources
+        if path.lower().endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".json"))
+    }
+    extensions = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".json")
+    index_names = tuple("index" + extension for extension in extensions if extension != ".json")
+    import_pattern = re.compile(
+        r"""(?:\bfrom\s*|\bimport\s*|\brequire\s*\(\s*)['"](\.{1,2}/[^'"]+)['"]"""
+    )
+    findings: list[dict[str, Any]] = []
+
+    for original_path, source in sources.items():
+        path = original_path.replace("\\", "/")
+        if not path.lower().endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte")):
+            continue
+
+        for match in import_pattern.finditer(source):
+            import_path = match.group(1)
+            target = posixpath.normpath(posixpath.join(posixpath.dirname(path), import_path))
+            candidates = {target, *(target + extension for extension in extensions)}
+            candidates.update(posixpath.join(target, index_name) for index_name in index_names)
+            if any(candidate in source_paths for candidate in candidates):
+                continue
+
+            findings.append(_finding(
+                original_path,
+                source.count("\n", 0, match.start()) + 1,
+                "unresolved-relative-js-import",
+                "Relative import target not found",
+                "medium",
+                f"The relative import '{import_path}' does not match a supported source file included in this analysis.",
+                "Check the import path, file extension, directory index, and whether the target was included in the analyzed repository.",
+            ))
+
+    return findings
+
+
 def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str, Any]:
     """Scan bounded source strings and return explainable static findings."""
     findings: list[dict[str, Any]] = []
@@ -278,6 +321,7 @@ def scan_for_bugs(sources: dict[str, str], max_findings: int = 500) -> dict[str,
             ))
 
     findings.extend(_cross_file_python_findings(sources))
+    findings.extend(_cross_file_js_findings(sources))
 
     findings.sort(key=lambda item: (
         {"high": 0, "medium": 1, "low": 2}.get(item["severity"], 3),
