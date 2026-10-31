@@ -214,7 +214,7 @@ def code_intelligence(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) 
     ]
     bottlenecks.sort(key=lambda item: (-item["connections"], item["path"]))
 
-    roots = [path for path in paths if incoming[path] == 0]
+    roots = [path for path in paths if incoming[path] == 0 and outgoing[path] > 0]
     reachable: set[str] = set()
     queue = list(roots)
     while queue:
