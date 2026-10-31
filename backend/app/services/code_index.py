@@ -271,8 +271,9 @@ def _ensure_file_manifest(connection: sqlite3.Connection) -> None:
 def index_project_sources_incremental(
     project_id: str,
     sources: dict[str, str],
+    prune_missing: bool = True,
 ) -> dict[str, int]:
-    """Update only changed source files and remove files no longer in the snapshot."""
+    """Update changed files; prune absent paths only when the supplied snapshot is complete."""
     connection, has_fts = _connect()
     table = "code_chunks" if has_fts else "code_chunks_plain"
     try:
@@ -288,7 +289,7 @@ def index_project_sources_incremental(
             for path, source in sources.items()
         }
 
-        removed = set(existing) - set(current)
+        removed = (set(existing) - set(current)) if prune_missing else set()
         changed = {
             path for path, digest in current.items()
             if existing.get(path) != digest
