@@ -29,7 +29,7 @@ CodeMap uses Ollama for local AI features, including code explanation and AI-ass
 - Static dependency graph, folder navigation, architecture insights, architecture health, and code intelligence.
 - Static potential-issue checks for Python plus selected JavaScript/TypeScript security patterns.
 - Local Ollama explanations for source files, findings, and architecture summaries.
-- Project-scoped codebase Q&A using a local SQLite retrieval index. Source files are split into overlapping chunks; SQLite FTS5/BM25 retrieves relevant excerpts before they are sent to the local Ollama model. A simple SQLite text-search fallback is used when FTS5 is unavailable.
+- Project-scoped codebase Q&A using a local SQLite retrieval index. Source files are split into overlapping chunks; SQLite FTS5/BM25 retrieves relevant excerpts before they are sent to the local Ollama model. A simple SQLite text-search fallback is used when FTS5 is unavailable. The UI can clear a project's indexed chunks.
 - Graph exports: PNG and Mermaid.
 
 The retrieval index is local keyword-based retrieval, not a semantic embedding/vector index. It reuses the configured Ollama generation model and does not require a separate embedding model.
@@ -55,7 +55,7 @@ CodeMAP/
 - Uploaded archives are treated as untrusted input.
 - ZIP extraction must reject path traversal and enforce file/count/size limits.
 - Repository code is analyzed as data and is never executed.
-- Source code for AI explanations is sent only to the configured local Ollama endpoint; no cloud AI provider is configured.
+- AI prompts and retrieved source excerpts are sent only to the configured local Ollama endpoint; no cloud AI provider is configured. Bounded source chunks are persisted locally in SQLite for codebase Q&A and can be cleared per project from the UI.
 - Keep local service configuration on the backend. Do not expose private configuration in frontend bundles.
 - Findings are labelled as potential issues unless independently confirmed.
 
