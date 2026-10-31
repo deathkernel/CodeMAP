@@ -321,7 +321,6 @@ def architecture_health(
         },
         "health_note": "Heuristic indicators based on analyzed lines, locally resolved imports, detected cycles, and static findings. Complexity is not cyclomatic complexity; the score is not a guarantee of code quality or runtime correctness.",
     }
-}
 
 
 def symbol_intelligence(sources: dict[str, str], max_symbols: int = 2000) -> dict[str, Any]:
