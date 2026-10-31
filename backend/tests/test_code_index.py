@@ -47,3 +47,9 @@ def test_project_index_can_be_cleared(tmp_path, monkeypatch) -> None:
 
     assert deleted == 1
     assert search_project_sources(project_id, "important") == []
+
+
+def test_project_id_changes_when_same_named_project_has_different_code() -> None:
+    first = make_project_id("demo", "Local folder", {"src/main.py": "print('first')"})
+    second = make_project_id("demo", "Local folder", {"src/main.py": "print('second')"})
+    assert first != second
