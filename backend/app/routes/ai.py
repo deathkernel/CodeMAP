@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from app.services.code_index import search_project_sources
+from app.services.code_index import search_project_sources_hybrid
 from typing import Any, Literal
 
 router = APIRouter(prefix="/api/ai", tags=["local-ai"])
@@ -256,7 +256,7 @@ async def explain_architecture(request: ExplainArchitectureRequest):
 @router.post("/ask-codebase")
 async def ask_codebase(request: AskCodebaseRequest):
     """Answer a repository question using locally indexed, relevant source chunks."""
-    chunks = search_project_sources(request.project_id, request.question, limit=6)
+    chunks, retrieval_mode = await search_project_sources_hybrid(request.project_id, request.question, limit=6)
     if not chunks:
         raise HTTPException(
             status_code=404,
@@ -287,6 +287,7 @@ async def ask_codebase(request: AskCodebaseRequest):
         "model": model,
         "downloaded": downloaded,
         "answer": answer,
+        "retrieval_mode": retrieval_mode,
         "sources": [
             {"path": item["path"], "start_line": item["start_line"]}
             for item in chunks
