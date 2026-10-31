@@ -1135,6 +1135,15 @@ function Explorer() {
                     )) : <span className="text-xs text-slate-500">No supported framework detected from manifests.</span>}
                   </div>
                 </div>
+                <div className="mb-4 rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Framework-aware entry points ({result.advanced_architecture.entry_points.length})</div>
+                  {result.advanced_architecture.entry_points.length ? result.advanced_architecture.entry_points.map((entry) => (
+                    <button key={`${entry.path}:${entry.framework}:${entry.reason}`} onClick={() => { void openSource(entry.path); }} className="mb-1 block w-full rounded-lg bg-white/[0.03] px-2.5 py-2 text-left hover:bg-white/[0.07]">
+                      <span className="block truncate text-xs text-slate-200">{entry.path}</span>
+                      <span className="mt-1 block text-[10px] text-slate-500">{entry.framework} · {entry.reason}</span>
+                    </button>
+                  )) : <p className="text-xs text-slate-500">No framework-aware entry point detected.</p>}
+                </div>
                 <div className="mb-4 grid gap-3 lg:grid-cols-2">
                   <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                     <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">API endpoints ({result.advanced_architecture.api_endpoints.length})</div>
