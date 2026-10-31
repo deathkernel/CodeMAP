@@ -545,14 +545,18 @@ def advanced_architecture_intelligence(
     known_paths = {node["path"] for node in nodes}
 
     package_data: dict[str, Any] = {}
-    if "package.json" in sources:
+    for manifest_path, manifest_source in sources.items():
+        if PurePosixPath(manifest_path).name.lower() != "package.json":
+            continue
         try:
-            package_data = json.loads(sources["package.json"])
+            package_data = json.loads(manifest_source)
         except (ValueError, TypeError):
             package_data = {}
+        if not isinstance(package_data, dict):
+            continue
         dependencies = {
-            **package_data.get("dependencies", {}),
-            **package_data.get("devDependencies", {}),
+            **(package_data.get("dependencies") or {}),
+            **(package_data.get("devDependencies") or {}),
         }
         for package, framework in (
             ("next", "Next.js"), ("express", "Express"), ("fastify", "Fastify"),
@@ -562,8 +566,10 @@ def advanced_architecture_intelligence(
             if package in dependencies:
                 frameworks.add(framework)
         main_file = package_data.get("main")
-        if isinstance(main_file, str) and main_file in known_paths:
-            entry_points.append({"path": main_file, "framework": "Node.js", "reason": "package.json main field"})
+        if isinstance(main_file, str):
+            candidate = str((PurePosixPath(manifest_path).parent / main_file).as_posix())
+            if candidate in known_paths:
+                entry_points.append({"path": candidate, "framework": "Node.js", "reason": "package.json main field"})
 
     for manifest, patterns in (
         ("requirements.txt", (("fastapi", "FastAPI"), ("flask", "Flask"), ("django", "Django"))),
@@ -572,14 +578,17 @@ def advanced_architecture_intelligence(
         ("go.mod", (("gin-gonic/gin", "Gin"), ("labstack/echo", "Echo"), ("gofiber/fiber", "Fiber"))),
         ("Cargo.toml", (("actix-web", "Actix Web"), ("axum", "Axum"), ("rocket", "Rocket"))),
     ):
-        manifest_text = sources.get(manifest, "").lower()
+        manifest_text = "\n".join(
+            text for manifest_path, text in sources.items()
+            if PurePosixPath(manifest_path).name.lower() == manifest.lower()
+        ).lower()
         for needle, framework in patterns:
             if needle in manifest_text:
                 frameworks.add(framework)
 
     if any(path.endswith("manage.py") for path in known_paths):
         frameworks.add("Django")
-    if any(path.endswith(("next.config.js", "next.config.mjs", "next.config.ts")) for path in known_paths):
+    if any(PurePosixPath(path).name.lower() in {"next.config.js", "next.config.mjs", "next.config.ts"} for path in known_paths):
         frameworks.add("Next.js")
 
     for path in sorted(known_paths):
@@ -618,12 +627,21 @@ def advanced_architecture_intelligence(
                         "framework": "FastAPI" if "FastAPI" in frameworks else "Flask/Django",
                     })
 
-            for match in re.finditer(r"""ForeignKey\s*\(\s*['"]([^'"]+)['"]""", source):
+            for match in re.finditer(r"""(?:models\.)?ForeignKey\s*\(\s*(?:['"]([^'"]+)['"]|([A-Z_]\w*))""", source):
                 database_relations.append({
                     "path": path, "line": source.count("\n", 0, match.start()) + 1,
                     "source_model": PurePosixPath(path).stem,
-                    "target": match.group(1), "kind": "Python ForeignKey",
+                    "target": match.group(1) or match.group(2), "kind": "Python ForeignKey",
                 })
+
+            if name == "urls.py" and "Django" in frameworks:
+                django_route = re.compile(r"""\b(?:path|re_path)\s*\(\s*['"]([^'"]+)['"]""")
+                for match in django_route.finditer(source):
+                    endpoints.append({
+                        "path": path, "line": source.count("\n", 0, match.start()) + 1,
+                        "method": "ROUTE", "route": match.group(1),
+                        "framework": "Django URL pattern",
+                    })
 
         if suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
             route_pattern = re.compile(
