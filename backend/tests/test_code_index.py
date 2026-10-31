@@ -1,4 +1,4 @@
-from app.services.code_index import index_project_sources, make_project_id, search_project_sources
+from app.services.code_index import delete_project_index, index_project_sources, make_project_id, search_project_sources
 
 
 def test_project_index_chunks_and_retrieves_relevant_source(tmp_path, monkeypatch) -> None:
@@ -34,3 +34,16 @@ def test_project_indexes_are_isolated(tmp_path, monkeypatch) -> None:
     assert first_results and first_results[0]["content"].find("first_project") >= 0
     assert second_results and second_results[0]["content"].find("second_project") >= 0
     assert search_project_sources(first, "second_project") == []
+
+
+
+def test_project_index_can_be_cleared(tmp_path, monkeypatch) -> None:
+    database = tmp_path / "codemap-index.db"
+    monkeypatch.setenv("CODEMAP_DATABASE_URL", f"sqlite:///{database.as_posix()}")
+    project_id = make_project_id("clear-demo", "main", {"main.py": "def important(): pass"})
+    index_project_sources(project_id, {"main.py": "def important(): pass"})
+
+    deleted = delete_project_index(project_id)
+
+    assert deleted == 1
+    assert search_project_sources(project_id, "important") == []
