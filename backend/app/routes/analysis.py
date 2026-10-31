@@ -190,7 +190,7 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
         graph = analyze_sources(sources)
         bug_report = scan_for_bugs(sources)
         symbols = symbol_intelligence(sources)
-    advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
+        advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
         return {
             "project_id": project_id,
             "indexed_chunks": indexed_chunks,
@@ -201,7 +201,7 @@ async def analyze_zip_upload(file: UploadFile = File(...)):
             **graph,
             "symbol_intelligence": symbols,
             "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
-        "advanced_architecture": advanced_architecture,
+            "advanced_architecture": advanced_architecture,
             "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
             "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),
             "bug_findings": bug_report["findings"],
