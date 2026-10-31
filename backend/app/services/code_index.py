@@ -45,10 +45,13 @@ def _connect() -> tuple[sqlite3.Connection, bool]:
 
 
 def make_project_id(name: str, branch: str, sources: dict[str, str]) -> str:
-    """Create a stable local index key for a repository snapshot's file inventory."""
-    inventory = "\n".join(sorted(sources))
-    digest = hashlib.sha256(f"{name}\n{branch}\n{inventory}".encode("utf-8")).hexdigest()
-    return digest[:24]
+    """Create a stable, content-aware local index key for one project snapshot."""
+    digest = hashlib.sha256()
+    digest.update(f"{name}\n{branch}\n".encode("utf-8"))
+    for path, source in sorted(sources.items()):
+        digest.update(path.encode("utf-8"))
+        digest.update(hashlib.sha256(source.encode("utf-8")).digest())
+    return digest.hexdigest()[:24]
 
 
 def _chunks(source: str):
