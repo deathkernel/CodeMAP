@@ -98,7 +98,10 @@ async def analyze_github(request: AnalyzeRequest, background_tasks: BackgroundTa
                 total_source_bytes += source_size
 
     project_id = make_stable_project_id(inventory["repository"], inventory["default_branch"])
-    index_update = index_project_sources_incremental(project_id, sources)
+    index_update = index_project_sources_incremental(
+        project_id, sources,
+        prune_missing=(not inventory.get("tree_truncated", False) and len(sources) == inventory["file_count"]),
+    )
     indexed_chunks = index_update["indexed_chunks"]
     embedding_job = create_embedding_job(project_id)
     if embedding_job["created"]:
@@ -164,7 +167,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest, background_tasks: 
         raise HTTPException(status_code=400, detail="No supported source files were found in this folder.")
 
     project_id = make_stable_project_id(request.folder_name, "Local folder")
-    index_update = index_project_sources_incremental(project_id, sources)
+    index_update = index_project_sources_incremental(project_id, sources, prune_missing=True)
     indexed_chunks = index_update["indexed_chunks"]
     embedding_job = create_embedding_job(project_id)
     if embedding_job["created"]:
@@ -216,7 +219,9 @@ async def analyze_zip_upload(background_tasks: BackgroundTasks, file: UploadFile
         archive = read_zip_sources(data)
         sources = archive["sources"]
         project_id = make_stable_project_id(file.filename[:-4] or "Uploaded ZIP", "ZIP archive")
-        index_update = index_project_sources_incremental(project_id, sources)
+        index_update = index_project_sources_incremental(
+            project_id, sources, prune_missing=(archive["files_skipped_by_limit"] == 0),
+        )
         indexed_chunks = index_update["indexed_chunks"]
         embedding_job = create_embedding_job(project_id)
         if embedding_job["created"]:
