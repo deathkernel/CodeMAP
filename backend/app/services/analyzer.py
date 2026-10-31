@@ -602,13 +602,13 @@ def advanced_architecture_intelligence(
 
         if suffix == ".py":
             route_pattern = re.compile(
-                r"@(?:\w+\.)?(get|post|put|patch|delete|options|head|route)\s*\(\s*['""]([^'""]+)['""]([^)]*)\)",
+                r"""@(?:\w+\.)?(get|post|put|patch|delete|options|head|route)\s*\(\s*['"]([^'"]+)['"]([^)]*)\)""",
                 re.IGNORECASE,
             )
             for match in route_pattern.finditer(source):
                 method = match.group(1).upper()
                 methods_match = re.search(r"methods\s*=\s*\[([^]]+)\]", match.group(3), re.IGNORECASE)
-                methods = re.findall(r"['""]([A-Z]+)['""]", methods_match.group(1)) if methods_match else []
+                methods = re.findall(r"""['"]([A-Z]+)['"]""", methods_match.group(1)) if methods_match else []
                 if method == "ROUTE":
                     methods = methods or ["GET"]
                 for verb in methods or [method]:
@@ -618,7 +618,7 @@ def advanced_architecture_intelligence(
                         "framework": "FastAPI" if "FastAPI" in frameworks else "Flask/Django",
                     })
 
-            for match in re.finditer(r"ForeignKey\s*\(\s*['""]([^'""]+)['""]", source):
+            for match in re.finditer(r"""ForeignKey\s*\(\s*['"]([^'"]+)['"]""", source):
                 database_relations.append({
                     "path": path, "line": source.count("\n", 0, match.start()) + 1,
                     "source_model": PurePosixPath(path).stem,
@@ -627,7 +627,7 @@ def advanced_architecture_intelligence(
 
         if suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
             route_pattern = re.compile(
-                r"\b(?:app|router|server|api)\.(get|post|put|patch|delete|options|head)\s*\(\s*['""]([^'""]+)['""]",
+                r"""\b(?:app|router|server|api)\.(get|post|put|patch|delete|options|head)\s*\(\s*['"]([^'"]+)['"]""",
                 re.IGNORECASE,
             )
             for match in route_pattern.finditer(source):
@@ -668,7 +668,7 @@ def advanced_architecture_intelligence(
                     current_model = ""
 
         sql_pattern = re.compile(
-            r"FOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[""]?(\w+)",
+            r"""FOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+["']?(\w+)""",
             re.IGNORECASE,
         )
         for match in sql_pattern.finditer(source):
