@@ -684,7 +684,11 @@ def delete_project_index(project_id: str) -> int:
     try:
         cursor = connection.execute(f"DELETE FROM {table} WHERE project_id = ?", (project_id,))
         _ensure_embedding_table(connection)
+        _ensure_file_manifest(connection)
+        _ensure_jobs_table(connection)
         connection.execute("DELETE FROM code_embeddings WHERE project_id = ?", (project_id,))
+        connection.execute("DELETE FROM code_index_files WHERE project_id = ?", (project_id,))
+        connection.execute("DELETE FROM code_index_jobs WHERE project_id = ?", (project_id,))
         connection.commit()
         return cursor.rowcount
     finally:
