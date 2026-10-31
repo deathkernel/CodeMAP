@@ -22,6 +22,18 @@ CodeMap uses Ollama for local AI features, including code explanation and AI-ass
 - **Privacy:** AI prompts and source snippets are sent to the configured local Ollama endpoint. No hosted AI provider is configured.
 - **Model management:** CodeMap can check whether the configured model is installed and prepare it through Ollama.
 
+## Implemented capabilities
+
+- GitHub repository analysis, local folder analysis, and ZIP upload analysis.
+- ZIP files are inspected and read in memory; repository code is never extracted to disk or executed.
+- Static dependency graph, folder navigation, architecture insights, architecture health, and code intelligence.
+- Static potential-issue checks for Python plus selected JavaScript/TypeScript security patterns.
+- Local Ollama explanations for source files, findings, and architecture summaries.
+- Project-scoped codebase Q&A using a local SQLite retrieval index. Source files are split into overlapping chunks; SQLite FTS5/BM25 retrieves relevant excerpts before they are sent to the local Ollama model. A simple SQLite text-search fallback is used when FTS5 is unavailable.
+- Graph exports: PNG and Mermaid.
+
+The retrieval index is local keyword-based retrieval, not a semantic embedding/vector index. It reuses the configured Ollama generation model and does not require a separate embedding model.
+
 ## Repository layout
 
 ```
