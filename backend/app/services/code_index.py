@@ -9,6 +9,7 @@ import os
 import re
 import sqlite3
 import struct
+import uuid
 
 import httpx
 from pathlib import Path
@@ -486,6 +487,100 @@ async def index_project_embeddings(project_id: str, batch_size: int = 24) -> int
             (project_id,),
         ).fetchone()[0]
         return total
+    finally:
+        connection.close()
+
+
+
+def _ensure_jobs_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS code_index_jobs ("
+        "job_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, job_type TEXT NOT NULL, "
+        "status TEXT NOT NULL, result_count INTEGER NOT NULL DEFAULT 0, "
+        "error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+
+
+def create_embedding_job(project_id: str) -> dict[str, str]:
+    """Create or reuse a queued/running embedding job for a project."""
+    connection, _ = _connect()
+    try:
+        _ensure_jobs_table(connection)
+        existing = connection.execute(
+            "SELECT job_id, status FROM code_index_jobs "
+            "WHERE project_id = ? AND job_type = 'embeddings' "
+            "AND status IN ('queued', 'running') ORDER BY created_at DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        if existing:
+            return {"job_id": existing[0], "status": existing[1]}
+
+        job_id = uuid.uuid4().hex
+        connection.execute(
+            "INSERT INTO code_index_jobs (job_id, project_id, job_type, status) "
+            "VALUES (?, ?, 'embeddings', 'queued')",
+            (job_id, project_id),
+        )
+        connection.commit()
+        return {"job_id": job_id, "status": "queued"}
+    finally:
+        connection.close()
+
+
+async def run_embedding_job(job_id: str, project_id: str) -> None:
+    """Run embedding work after the HTTP response and persist its lifecycle."""
+    connection, _ = _connect()
+    try:
+        _ensure_jobs_table(connection)
+        connection.execute(
+            "UPDATE code_index_jobs SET status = 'running', updated_at = CURRENT_TIMESTAMP "
+            "WHERE job_id = ?",
+            (job_id,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    try:
+        result_count = await index_project_embeddings(project_id)
+        status = "completed"
+        error = None
+    except Exception:
+        result_count = 0
+        status = "failed"
+        error = "Embedding indexing failed. Check the local Ollama service and application logs."
+
+    connection, _ = _connect()
+    try:
+        _ensure_jobs_table(connection)
+        connection.execute(
+            "UPDATE code_index_jobs SET status = ?, result_count = ?, error = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE job_id = ?",
+            (status, result_count, error, job_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def get_index_job(job_id: str) -> dict[str, Any] | None:
+    """Return a persisted background index job without exposing local paths."""
+    connection, _ = _connect()
+    try:
+        _ensure_jobs_table(connection)
+        row = connection.execute(
+            "SELECT job_id, project_id, job_type, status, result_count, error, created_at, updated_at "
+            "FROM code_index_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "job_id": row[0], "project_id": row[1], "job_type": row[2],
+            "status": row[3], "indexed_embeddings": row[4], "error": row[5],
+            "created_at": row[6], "updated_at": row[7],
+        }
     finally:
         connection.close()
 
