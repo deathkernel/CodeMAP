@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import math
 import os
 import re
 import sqlite3
+import struct
+
+import httpx
 from pathlib import Path
 from typing import Any
 
@@ -299,12 +303,164 @@ def search_project_sources(project_id: str, query: str, limit: int = DEFAULT_RES
         connection.close()
 
 
+
+def _embedding_settings() -> tuple[str, str]:
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+    model = os.getenv("CODEMAP_EMBEDDING_MODEL", "nomic-embed-text")
+    return base_url, model
+
+
+def _ensure_embedding_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS code_embeddings ("
+        "project_id TEXT NOT NULL, path TEXT NOT NULL, start_line INTEGER NOT NULL, "
+        "content TEXT NOT NULL, vector BLOB NOT NULL, dimensions INTEGER NOT NULL, "
+        "PRIMARY KEY (project_id, path, start_line, content))"
+    )
+
+
+async def _ollama_embeddings(texts: list[str]) -> list[list[float]] | None:
+    """Create local embeddings only when the separately configured model is installed."""
+    base_url, model = _embedding_settings()
+    try:
+        async with httpx.AsyncClient(timeout=120, trust_env=False) as client:
+            tags = await client.get(f"{base_url}/api/tags")
+            tags.raise_for_status()
+            installed = {item.get("name", "") for item in tags.json().get("models", [])}
+            if model not in installed:
+                return None
+
+            response = await client.post(
+                f"{base_url}/api/embed",
+                json={"model": model, "input": texts},
+            )
+            response.raise_for_status()
+            embeddings = response.json().get("embeddings", [])
+            if len(embeddings) != len(texts):
+                return None
+            if not embeddings or not all(isinstance(value, (int, float)) for value in embeddings[0]):
+                return None
+            return embeddings
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return None
+
+
+async def index_project_embeddings(project_id: str, batch_size: int = 24) -> int:
+    """Build local vector embeddings for a project's chunks; never downloads a model."""
+    connection, has_fts = _connect()
+    table = "code_chunks" if has_fts else "code_chunks_plain"
+    try:
+        _ensure_embedding_table(connection)
+        rows = connection.execute(
+            f"SELECT path, CAST(start_line AS INTEGER), content FROM {table} WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+        connection.execute("DELETE FROM code_embeddings WHERE project_id = ?", (project_id,))
+        connection.commit()
+    finally:
+        connection.close()
+
+    stored = 0
+    for offset in range(0, len(rows), max(1, batch_size)):
+        batch = rows[offset:offset + max(1, batch_size)]
+        vectors = await _ollama_embeddings([row[2] for row in batch])
+        if vectors is None:
+            break
+
+        connection, _ = _connect()
+        try:
+            _ensure_embedding_table(connection)
+            payload = []
+            for row, vector in zip(batch, vectors):
+                packed = struct.pack(f"<{len(vector)}f", *vector)
+                payload.append((project_id, row[0], row[1], row[2], packed, len(vector)))
+            connection.executemany(
+                "INSERT OR REPLACE INTO code_embeddings "
+                "(project_id, path, start_line, content, vector, dimensions) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                payload,
+            )
+            connection.commit()
+            stored += len(payload)
+        finally:
+            connection.close()
+    return stored
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right) or not left:
+        return 0.0
+    dot = sum(a * b for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    if not left_norm or not right_norm:
+        return 0.0
+    return dot / (left_norm * right_norm)
+
+
+async def search_project_sources_hybrid(
+    project_id: str,
+    query: str,
+    limit: int = DEFAULT_RESULTS,
+) -> tuple[list[dict[str, Any]], str]:
+    """Combine local BM25 and cosine similarity using reciprocal-rank fusion."""
+    keyword_results = search_project_sources(project_id, query, limit=max(limit * 2, 8))
+    query_vectors = await _ollama_embeddings([query])
+    if not query_vectors:
+        return keyword_results[:limit], "keyword"
+
+    connection, _ = _connect()
+    try:
+        _ensure_embedding_table(connection)
+        rows = connection.execute(
+            "SELECT path, start_line, content, vector, dimensions "
+            "FROM code_embeddings WHERE project_id = ?",
+            (project_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    if not rows:
+        return keyword_results[:limit], "keyword"
+
+    query_vector = query_vectors[0]
+    semantic_results = []
+    for row in rows:
+        if row[4] != len(query_vector):
+            continue
+        vector = list(struct.unpack(f"<{row[4]}f", row[3]))
+        semantic_results.append({
+            "path": row[0],
+            "start_line": row[1],
+            "content": row[2],
+            "score": _cosine_similarity(query_vector, vector),
+        })
+    semantic_results.sort(key=lambda item: item["score"], reverse=True)
+
+    fused: dict[tuple[str, int, str], dict[str, Any]] = {}
+    for rank, item in enumerate(keyword_results, 1):
+        key = (item["path"], item["start_line"], item["content"])
+        fused.setdefault(key, {**item, "hybrid_score": 0.0})
+        fused[key]["hybrid_score"] += 1 / (60 + rank)
+    for rank, item in enumerate(semantic_results[:max(limit * 2, 8)], 1):
+        key = (item["path"], item["start_line"], item["content"])
+        fused.setdefault(key, {**item, "hybrid_score": 0.0})
+        fused[key]["hybrid_score"] += 1 / (60 + rank)
+        fused[key]["semantic_score"] = item["score"]
+
+    results = sorted(fused.values(), key=lambda item: item["hybrid_score"], reverse=True)
+    return results[:limit], "hybrid"
+
+
+
 def delete_project_index(project_id: str) -> int:
     """Delete all locally stored source chunks for one project."""
     connection, has_fts = _connect()
     table = "code_chunks" if has_fts else "code_chunks_plain"
     try:
         cursor = connection.execute(f"DELETE FROM {table} WHERE project_id = ?", (project_id,))
+        _ensure_embedding_table(connection)
+        connection.execute("DELETE FROM code_embeddings WHERE project_id = ?", (project_id,))
         connection.commit()
         return cursor.rowcount
     finally:
