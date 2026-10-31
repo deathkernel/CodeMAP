@@ -90,8 +90,43 @@ def _advanced_python_findings(path: str, tree: ast.AST) -> list[dict[str, Any]]:
                 else:
                     seen[key.value] = key.lineno
 
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Constant) and node.value.value is None:
+            findings.append(_finding(
+                path, node.lineno, "none-attribute-access",
+                "Attribute access on None literal", "high",
+                "This expression accesses an attribute on the None literal and will raise AttributeError.",
+                "Check the value before accessing attributes or use the correct object reference.",
+            ))
+
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Constant) and node.value.value is None:
+            findings.append(_finding(
+                path, node.lineno, "none-subscript-access",
+                "Subscription on None literal", "high",
+                "This expression indexes or slices the None literal and will raise TypeError.",
+                "Check the value before indexing or use the correct sequence or mapping.",
+            ))
+
         if isinstance(node, ast.Compare):
             operands = [node.left, *node.comparators]
+            for index, operator in enumerate(node.ops):
+                left, right = operands[index], operands[index + 1]
+                ordering_ops = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+                if (
+                    isinstance(operator, ordering_ops)
+                    and isinstance(left, ast.Constant)
+                    and isinstance(right, ast.Constant)
+                    and type(left.value) is not type(right.value)
+                    and left.value is not None
+                    and right.value is not None
+                    and not (isinstance(left.value, (int, float)) and isinstance(right.value, (int, float)))
+                ):
+                    findings.append(_finding(
+                        path, node.lineno, "incompatible-literal-comparison",
+                        "Comparison between incompatible literal types", "high",
+                        "Python ordering comparisons between these literal types raise TypeError.",
+                        "Convert values to compatible types before comparing them.",
+                    ))
+                    break
             for index, operator in enumerate(node.ops):
                 if not isinstance(operator, (ast.Is, ast.IsNot)):
                     continue
