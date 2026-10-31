@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 
 type AnalysisResult = {
+  project_id: string;
+  indexed_chunks: number;
   repository: string;
   default_branch: string;
   nodes: Array<{ id: string; label: string; path: string; language: string; lines: number }>;
@@ -247,6 +249,11 @@ function Explorer() {
   const [architectureExplanation, setArchitectureExplanation] = useState("");
   const [architectureAiLoading, setArchitectureAiLoading] = useState(false);
   const [architectureAiError, setArchitectureAiError] = useState("");
+  const [codebaseQuestion, setCodebaseQuestion] = useState("");
+  const [codebaseAnswer, setCodebaseAnswer] = useState("");
+  const [codebaseSources, setCodebaseSources] = useState<Array<{ path: string; start_line: number }>>([]);
+  const [codebaseLoading, setCodebaseLoading] = useState(false);
+  const [codebaseError, setCodebaseError] = useState("");
   const [ollamaState, setOllamaState] = useState<"checking" | "ready" | "missing" | "offline">("checking");
 
   useEffect(() => {
@@ -606,6 +613,35 @@ function Explorer() {
     }
   }
 
+  async function askCodebase(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!result || !codebaseQuestion.trim()) return;
+    setCodebaseLoading(true);
+    setCodebaseError("");
+    setCodebaseAnswer("");
+    setCodebaseSources([]);
+    try {
+      await prepareModel();
+      const response = await fetch(`${API_BASE}/api/ai/ask-codebase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: result.project_id,
+          repository: result.repository,
+          question: codebaseQuestion.trim(),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Could not answer this codebase question.");
+      setCodebaseAnswer(payload.answer || "The model returned an empty answer.");
+      setCodebaseSources(payload.sources || []);
+    } catch (err) {
+      setCodebaseError(err instanceof Error ? err.message : "Could not query the local code index.");
+    } finally {
+      setCodebaseLoading(false);
+    }
+  }
+
   async function analyze(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -945,6 +981,27 @@ function Explorer() {
                   <Metric label="Unresolved" value={result.stats.relative_imports_unresolved} />
                   <Metric label="Not fetched" value={result.stats.files_not_fetched} />
                 </div>
+              </div>
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.035] p-5">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Sparkles size={16} className="text-cyan-300" /> Ask your codebase</div>
+                <p className="mb-3 text-[10px] leading-5 text-slate-500">Local retrieval index · {result.indexed_chunks} source chunks · project-isolated</p>
+                <form onSubmit={askCodebase} className="space-y-2">
+                  <textarea value={codebaseQuestion} onChange={(event) => setCodebaseQuestion(event.target.value)}
+                    placeholder="How does authentication work? Where is the database connection created?"
+                    rows={3} maxLength={2000}
+                    className="w-full resize-y rounded-lg border border-white/10 bg-[#080d17] p-3 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-cyan-400/40" />
+                  <button disabled={codebaseLoading || !codebaseQuestion.trim()}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-50">
+                    {codebaseLoading ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {codebaseLoading ? "Searching and thinking…" : "Ask local codebase"}
+                  </button>
+                </form>
+                {codebaseError && <p role="alert" className="mt-3 rounded-lg border border-rose-400/20 bg-rose-400/5 p-2 text-xs text-rose-300">{codebaseError}</p>}
+                {codebaseAnswer && <div className="mt-3 whitespace-pre-wrap rounded-lg bg-black/20 p-3 text-xs leading-6 text-slate-300">{codebaseAnswer}</div>}
+                {codebaseSources.length > 0 && <div className="mt-3 border-t border-white/10 pt-3">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Retrieved source chunks</div>
+                  {codebaseSources.map((item, index) => <div key={item.path + index} className="mb-1 truncate text-[10px] text-cyan-200">{item.path}:{item.start_line}</div>)}
+                </div>}
               </div>
               {dependencyDrilldown && (
                 <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/[0.04] p-5">
