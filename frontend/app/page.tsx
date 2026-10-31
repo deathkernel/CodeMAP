@@ -154,16 +154,67 @@ function getLanguageStyle(language: string) {
 
 function getGraphPositions(result: AnalysisResult) {
   const folders = [...new Set(result.nodes.map((node) => getFolderGroup(node.path)))].sort();
+  const outgoing = new Map<string, string[]>();
+  const indegree = new Map<string, number>();
+  const rank = new Map<string, number>();
+  const degree = new Map<string, number>();
+
+  result.nodes.forEach((node) => {
+    outgoing.set(node.id, []);
+    indegree.set(node.id, 0);
+    rank.set(node.id, 0);
+    degree.set(node.id, 0);
+  });
+  result.edges.forEach((edge) => {
+    if (!outgoing.has(edge.source) || !indegree.has(edge.target)) return;
+    outgoing.get(edge.source)?.push(edge.target);
+    indegree.set(edge.target, (indegree.get(edge.target) || 0) + 1);
+    degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
+  });
+
+  const queue = result.nodes
+    .filter((node) => indegree.get(node.id) === 0)
+    .map((node) => node.id)
+    .sort();
+  let cursor = 0;
+  while (cursor < queue.length) {
+    const current = queue[cursor++];
+    for (const target of outgoing.get(current) || []) {
+      rank.set(target, Math.max(rank.get(target) || 0, (rank.get(current) || 0) + 1));
+      const remaining = (indegree.get(target) || 0) - 1;
+      indegree.set(target, remaining);
+      if (remaining === 0) queue.push(target);
+    }
+  }
+
+  const unresolved = result.nodes.filter((node) => (indegree.get(node.id) || 0) > 0);
+  const nextRank = Math.max(0, ...rank.values()) + 1;
+  unresolved.forEach((node) => rank.set(node.id, nextRank));
+
   const positions = new Map<string, { x: number; y: number }>();
-  folders.forEach((folder, folderIndex) => {
+  let folderTop = 0;
+  folders.forEach((folder) => {
     const files = result.nodes.filter((node) => getFolderGroup(node.path) === folder);
-    files.forEach((node, index) => {
-      positions.set(node.id, {
-        x: folderIndex * 520 + (index % 2) * 230,
-        y: Math.floor(index / 2) * 190,
+    const columns = new Map<number, typeof files>();
+    files.forEach((node) => {
+      const column = rank.get(node.id) || 0;
+      columns.set(column, [...(columns.get(column) || []), node]);
+    });
+
+    let folderRows = 1;
+    columns.forEach((columnFiles, column) => {
+      columnFiles.sort((a, b) =>
+        (degree.get(b.id) || 0) - (degree.get(a.id) || 0) || a.path.localeCompare(b.path),
+      );
+      folderRows = Math.max(folderRows, columnFiles.length);
+      columnFiles.forEach((node, index) => {
+        positions.set(node.id, { x: column * 360, y: folderTop + index * 170 });
       });
     });
+    folderTop += folderRows * 170 + 110;
   });
+
   return positions;
 }
 
