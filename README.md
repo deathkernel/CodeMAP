@@ -29,10 +29,17 @@ CodeMap uses Ollama for local AI features, including code explanation and AI-ass
 - Static dependency graph, folder navigation, architecture insights, architecture health, and code intelligence.
 - Static potential-issue checks for Python plus selected JavaScript/TypeScript security patterns.
 - Local Ollama explanations for source files, findings, and architecture summaries.
-- Project-scoped codebase Q&A using a local SQLite retrieval index. Source files are split into overlapping chunks; SQLite FTS5/BM25 retrieves relevant excerpts before they are sent to the local Ollama model. A simple SQLite text-search fallback is used when FTS5 is unavailable. The UI can clear a project's indexed chunks.
+- Project-scoped codebase Q&A using a local SQLite retrieval index. Python and JavaScript/TypeScript functions and classes are indexed as focused chunks where recognized; other files use bounded text chunks. Retrieval combines SQLite FTS5/BM25 keyword ranking with local Ollama vector embeddings using reciprocal-rank fusion. If the embedding model is unavailable, Q&A falls back to BM25/SQLite text search. The UI can clear a project's indexed chunks and embeddings.
 - Graph exports: PNG and Mermaid.
 
-The retrieval index is local keyword-based retrieval, not a semantic embedding/vector index. It reuses the configured Ollama generation model and does not require a separate embedding model.
+## Local semantic retrieval
+
+- **Generation model:** remains `OLLAMA_MODEL` (default Qwen 3.5 9B Q6_K); this is not changed by semantic indexing.
+- **Embedding model:** `CODEMAP_EMBEDDING_MODEL` (default `nomic-embed-text`), used only through the local Ollama `/api/embed` endpoint.
+- **Install once:** run `ollama pull nomic-embed-text` on the same machine as Ollama. CodeMap does not automatically download this embedding model.
+- **Storage:** vectors and source chunks are stored in the local SQLite database and removed together when a project's index is cleared.
+- **Fallback:** if the embedding model is not installed or the local embedding endpoint is unavailable, indexing/Q&A continue with keyword retrieval; the analysis response reports `semantic_index_available` and Q&A reports its `retrieval_mode`.
+- **Privacy:** embedding requests go only to the configured local Ollama endpoint; no hosted embedding API is used.
 
 ## Repository layout
 
@@ -65,7 +72,6 @@ Core workflows are implemented: GitHub/local-folder/ZIP ingestion, dependency vi
 
 ## Next improvements
 
-- Add semantic embedding-based retrieval when a suitable local embedding model is selected; current SQLite FTS5/BM25 retrieval is keyword-based.
 - Expand language-specific static checks and parser coverage.
 - Improve incremental indexing and performance on very large repositories.
 
