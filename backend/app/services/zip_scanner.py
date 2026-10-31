@@ -129,7 +129,7 @@ def read_zip_sources(data: bytes) -> dict[str, Any]:
 
             try:
                 raw = archive.read(info)
-            except (RuntimeError, zipfile.BadZipFile, OSError) as exc:
+            except (RuntimeError, zipfile.BadZipFile, OSError, NotImplementedError, EOFError) as exc:
                 raise ArchiveError(f"Could not safely read ZIP entry: {info.filename}") from exc
 
             if len(raw) > MAX_SOURCE_FILE_BYTES:
