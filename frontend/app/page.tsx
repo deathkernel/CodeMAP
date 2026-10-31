@@ -369,7 +369,7 @@ function Explorer() {
         id: edge.id, source: edge.source, target: edge.target, label: "imports", animated: active,
         style: { stroke: active ? "#818cf8" : "#334155", strokeWidth: active ? 1.8 : 1, opacity: active ? 1 : 0.15 },
         labelStyle: { fill: "#a5b4fc", fontSize: 10 },
-        markerEnd: { type: "arrowclosed", color: active ? "#818cf8" : "#334155", width: 16, height: 16 },
+        markerEnd: { type: "arrowclosed" as const, color: active ? "#818cf8" : "#334155", width: 16, height: 16 },
       };
     }) ?? [],
     [result, graphMetrics, selected, highlightDependencies],
