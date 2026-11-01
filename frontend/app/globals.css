@@ -5,13 +5,12 @@
 :root {
   color-scheme: dark;
   --page: #080b12;
-  --surface: #101722;
-  --surface-raised: #151f2d;
-  --line: rgba(148, 163, 184, 0.13);
-  --muted: #91a0b5;
+  --panel: #101722;
+  --panel-raised: #151f2d;
+  --line: rgba(148, 163, 184, 0.14);
   --text: #edf3fb;
+  --muted: #91a0b5;
   --accent: #8b9cff;
-  --accent-strong: #7185ff;
   background: var(--page);
   color: var(--text);
   font-synthesis: none;
@@ -19,61 +18,56 @@
 }
 
 * { box-sizing: border-box; }
-
 html { min-width: 360px; scroll-behavior: smooth; }
-
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(ellipse at 50% -18%, rgba(89, 110, 255, 0.17), transparent 42rem),
-    radial-gradient(ellipse at 100% 42%, rgba(36, 179, 190, 0.055), transparent 32rem),
-    var(--page);
   color: var(--text);
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(92, 111, 255, .17), transparent 44rem),
+    radial-gradient(ellipse at 100% 45%, rgba(43, 183, 190, .055), transparent 34rem),
+    var(--page);
   font-feature-settings: "ss01" on;
 }
-
-::selection { background: rgba(129, 145, 255, 0.35); color: white; }
-
+::selection { background: rgba(129,145,255,.35); color: white; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
-  outline: 2px solid rgba(139, 156, 255, 0.75);
+  outline: 2px solid rgba(139,156,255,.78);
   outline-offset: 2px;
 }
-
-main.min-h-screen { padding-top: 22px; }
+main.min-h-screen { padding: 22px 32px 0; }
 main > header {
   min-height: 68px;
-  padding: 0 0 18px;
+  padding-bottom: 18px;
   border-color: var(--line);
 }
 main > header > div:first-child > div:first-child {
-  border: 1px solid rgba(139, 156, 255, 0.22);
-  background: linear-gradient(145deg, rgba(139, 156, 255, 0.2), rgba(90, 110, 220, 0.06));
-  box-shadow: 0 8px 28px rgba(64, 82, 190, 0.12);
+  border: 1px solid rgba(139,156,255,.24);
+  background: linear-gradient(145deg, rgba(139,156,255,.2), rgba(90,110,220,.06));
+  box-shadow: 0 8px 28px rgba(64,82,190,.12);
 }
 main > header > div:first-child > div:last-child > div:first-child {
   font-size: 19px;
-  letter-spacing: -0.045em;
+  letter-spacing: -.045em;
 }
 main > header > div:first-child > div:last-child > div:last-child {
-  font-size: 9px;
-  letter-spacing: 0.24em;
   color: #71819a;
+  font-size: 9px;
+  letter-spacing: .24em;
 }
-main > section { padding-top: 54px; }
+main > section { padding-top: 52px; }
 main > section > div:first-child h1 {
-  font-size: clamp(2.7rem, 5vw, 4.3rem);
+  font-size: clamp(2.7rem, 5vw, 4.25rem);
   line-height: 1.04;
-  letter-spacing: -0.065em;
+  letter-spacing: -.065em;
   font-weight: 650;
 }
 main > section > div:first-child h1 span {
+  color: #a9b5ff;
   background: linear-gradient(100deg, #a9b5ff 5%, #7c91ff 52%, #7ed8df 100%);
   background-clip: text;
   -webkit-background-clip: text;
-  color: transparent;
 }
 main > section > div:first-child p {
   color: #9aa9bd;
@@ -81,92 +75,85 @@ main > section > div:first-child p {
   line-height: 1.9;
 }
 main > section > div:first-child > div:first-child {
-  letter-spacing: 0.19em;
   color: #aab6ff;
+  letter-spacing: .19em;
 }
-
 main > section > div:nth-of-type(2):has(form) {
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148,163,184,.16);
   border-radius: 20px;
   padding: 10px;
-  background: linear-gradient(135deg, rgba(19, 29, 44, 0.94), rgba(12, 19, 30, 0.96));
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.22), inset 0 1px rgba(255,255,255,0.035);
+  background: linear-gradient(135deg, rgba(19,29,44,.96), rgba(12,19,30,.98));
+  box-shadow: 0 22px 70px rgba(0,0,0,.22), inset 0 1px rgba(255,255,255,.035);
 }
-main input, main textarea, main select {
-  color: #e8eef8;
-}
+main input, main textarea, main select { color: #e8eef8; }
 main input::placeholder, main textarea::placeholder { color: #64748b; }
 main input:focus, main textarea:focus, main select:focus {
-  border-color: rgba(139, 156, 255, 0.52);
-  box-shadow: 0 0 0 3px rgba(139, 156, 255, 0.08);
+  border-color: rgba(139,156,255,.52);
+  box-shadow: 0 0 0 3px rgba(139,156,255,.08);
 }
 main button {
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 main button:not(:disabled):active { transform: translateY(1px); }
 main button:disabled { cursor: not-allowed; }
-
 main section section.rounded-2xl,
 main aside > div.rounded-2xl,
 main article.rounded-2xl {
   border-color: var(--line);
-  background: linear-gradient(155deg, rgba(18, 27, 41, 0.96), rgba(12, 19, 30, 0.96));
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.13), inset 0 1px rgba(255,255,255,0.025);
+  background: linear-gradient(155deg, rgba(18,27,41,.97), rgba(12,19,30,.97));
+  box-shadow: 0 12px 36px rgba(0,0,0,.14), inset 0 1px rgba(255,255,255,.025);
 }
 main section section.rounded-2xl { border-radius: 18px; }
 main aside > div.rounded-2xl { border-radius: 17px; }
-main aside > div.rounded-2xl > div:first-child { letter-spacing: -0.015em; }
-main aside > div.rounded-2xl button:not([class*="bg-indigo-500"]):not([class*="bg-cyan-500"]) {
-  border-color: rgba(148, 163, 184, 0.13);
-}
-main aside > div.rounded-2xl button:hover { border-color: rgba(139, 156, 255, 0.28); }
+main aside > div.rounded-2xl > div:first-child { letter-spacing: -.015em; }
+main aside > div.rounded-2xl button:hover { border-color: rgba(139,156,255,.3); }
 main aside > div.rounded-2xl .rounded-xl,
-main aside > div.rounded-2xl .rounded-lg {
-  border-color: rgba(148, 163, 184, 0.09);
-}
+main aside > div.rounded-2xl .rounded-lg { border-color: rgba(148,163,184,.1); }
 main aside > div.rounded-2xl .text-2xl {
   font-size: 1.65rem;
-  letter-spacing: -0.055em;
+  letter-spacing: -.055em;
 }
-main aside > div.rounded-2xl .uppercase { letter-spacing: 0.12em; }
-
+main aside > div.rounded-2xl .uppercase { letter-spacing: .12em; }
 main .bg-indigo-500:not(:disabled) {
   background: linear-gradient(135deg, #7185ff, #596ee8);
-  box-shadow: 0 7px 20px rgba(91, 111, 238, 0.2);
+  box-shadow: 0 7px 20px rgba(91,111,238,.2);
 }
 main .bg-indigo-500:not(:disabled):hover { background: linear-gradient(135deg, #8798ff, #6c80f4); }
-main .bg-cyan-500\/15 { background: rgba(55, 190, 204, 0.12); }
-main .bg-white\/\[0\.025\], main .bg-white\/\[0\.035\] { background-color: rgba(17, 26, 39, 0.78); }
-
-.react-flow {
-  background: radial-gradient(circle at 50% 45%, rgba(44, 61, 91, 0.13), transparent 60%);
+main .bg-white\\/\\[0\\.025\\], main .bg-white\\/\\[0\\.035\\] {
+  background-color: rgba(17,26,39,.78);
 }
-.react-flow__background pattern circle { fill: rgba(135, 153, 181, 0.18); }
+.react-flow {
+  background: radial-gradient(circle at 50% 45%, rgba(44,61,91,.14), transparent 60%);
+}
+.react-flow__background pattern circle { fill: rgba(135,153,181,.18); }
 .react-flow__controls {
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid rgba(148,163,184,.18);
   border-radius: 12px;
   background: #111b29;
   box-shadow: 0 8px 24px rgba(0,0,0,.24);
 }
 .react-flow__controls-button {
-  border-bottom-color: rgba(148, 163, 184, 0.12);
+  border-bottom-color: rgba(148,163,184,.12);
   background: #111b29;
   fill: #cbd5e1;
 }
 .react-flow__controls-button:hover { background: #1c2a3d; }
 .react-flow__minimap {
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.17);
+  border: 1px solid rgba(148,163,184,.17);
   border-radius: 12px;
-  background: rgba(13, 21, 33, 0.9);
+  background: rgba(13,21,33,.92);
 }
 .react-flow__attribution { display: none; }
-
 footer { color: #66758b; border-color: var(--line); }
 
+@media (min-width: 1024px) {
+  main > section > div:nth-of-type(2):has(form) { gap: 10px; }
+  main > section > div:nth-of-type(3) { margin-top: 22px; }
+}
 @media (max-width: 768px) {
-  main.min-h-screen { padding: 16px; }
+  main.min-h-screen { padding: 16px 16px 0; }
   main > section { padding-top: 38px; }
   main > section > div:first-child h1 { font-size: clamp(2.5rem, 11vw, 3.4rem); }
   main > section > div:nth-of-type(2):has(form) { padding: 8px; }
