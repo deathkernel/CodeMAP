@@ -48,15 +48,13 @@ def _js_imports(source: str) -> list[str]:
 
 def _resolve_import(source_path: str, imported: str, known_paths: set[str], python: bool = False) -> str | None:
     if imported.startswith("."):
-        candidate = str((PurePosixPath(source_path).parent / imported).as_posix())
-        parts: list[str] = []
-        for part in candidate.split("/"):
-            if part == "..":
-                if parts:
-                    parts.pop()
-            elif part not in {"", "."}:
-                parts.append(part)
-        candidate = "/".join(parts)
+        relative_level = len(imported) - len(imported.lstrip("."))
+        module_path = imported[relative_level:].replace(".", "/")
+        parts = list(PurePosixPath(source_path).parent.parts)
+        for _ in range(max(0, relative_level - 1)):
+            if parts:
+                parts.pop()
+        candidate = "/".join([*parts, *([module_path] if module_path else [])])
     elif python:
         candidate = imported.replace(".", "/")
     else:
