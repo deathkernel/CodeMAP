@@ -1152,7 +1152,7 @@ function Explorer() {
                 <button onClick={() => setHighlightDependencies((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (highlightDependencies ? "border-indigo-400/30 bg-indigo-500/10 text-indigo-200" : "border-white/10 text-slate-400")}>{highlightDependencies ? "Dependency path: on" : "Dependency path: off"}</button>
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
-              <div className="relative h-[720px]">
+              <div className="relative h-[calc(100vh-300px)] min-h-[560px]">
                 {result.edges.length === 0 && (
                   <div className="absolute left-4 right-4 top-4 z-10 rounded-xl border border-amber-400/20 bg-slate-950/90 px-4 py-3 text-xs text-amber-100 shadow-lg">
                     No local import connections were resolved. Files are arranged in an overview grid so the canvas remains explorable.
