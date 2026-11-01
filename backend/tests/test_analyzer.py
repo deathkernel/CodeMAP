@@ -23,6 +23,24 @@ def test_typescript_relative_import_creates_edge() -> None:
     assert result["edges"][0]["target"] == "src/components/Card.tsx"
 
 
+def test_typescript_parent_relative_import_creates_edge() -> None:
+    result = analyze_sources({
+        "src/pages/home/page.tsx": "import { api } from '../../lib/api';\\n",
+        "src/lib/api.ts": "export const api = {};\\n",
+    })
+    assert len(result["edges"]) == 1
+    assert result["edges"][0]["target"] == "src/lib/api.ts"
+
+
+def test_typescript_relative_import_resolves_index_file() -> None:
+    result = analyze_sources({
+        "src/page.tsx": "import { Button } from './components';\\n",
+        "src/components/index.tsx": "export function Button() { return null; }\\n",
+    })
+    assert len(result["edges"]) == 1
+    assert result["edges"][0]["target"] == "src/components/index.tsx"
+
+
 def test_invalid_python_is_not_executed_or_crashing() -> None:
     result = analyze_sources({"broken.py": "this is not valid python !!!"})
     assert result["nodes"][0]["path"] == "broken.py"
