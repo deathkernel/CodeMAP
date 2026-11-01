@@ -65,7 +65,6 @@ export function getGraphPositions(result: AnalysisResult) {
   const nodeHeight = 168;
   const columnGap = 105;
   const rowGap = 42;
-  const disconnectedColumns = 5;
 
   folders.forEach((folder) => {
     const files = result.nodes.filter((node) => getFolderGroup(node.path) === folder);
@@ -95,6 +94,7 @@ export function getGraphPositions(result: AnalysisResult) {
     });
 
     const maxRank = connected.length ? Math.max(...connected.map((node) => rank.get(node.id) || 0)) : -1;
+    const disconnectedColumns = Math.max(1, Math.ceil(Math.sqrt(disconnected.length)));
     const disconnectedStartX = (maxRank + 1) * (nodeWidth + columnGap) + 90;
     disconnected.forEach((node, index) => {
       const column = index % disconnectedColumns;
