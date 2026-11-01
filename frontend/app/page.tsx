@@ -329,6 +329,62 @@ function Explorer() {
     () => [...new Set((result?.nodes || []).map((node) => node.language).filter(Boolean))].sort(),
     [result],
   );
+
+  const improvementRoadmap = useMemo(() => {
+    if (!result) return [];
+    const items: Array<{ id: string; priority: "high" | "medium" | "low"; title: string; detail: string; path?: string }> = [];
+    result.bug_findings.slice(0, 5).forEach((finding) => {
+      items.push({
+        id: `bug:${finding.id}`,
+        priority: finding.severity,
+        title: finding.title,
+        detail: `${finding.path}:${finding.line} · ${finding.recommendation}`,
+        path: finding.path,
+      });
+    });
+    result.architecture_insights.circular_dependencies.slice(0, 4).forEach((cycle, index) => {
+      items.push({
+        id: `cycle:${index}`,
+        priority: "high",
+        title: "Break a circular dependency",
+        detail: cycle.join(" → "),
+        path: cycle[0],
+      });
+    });
+    result.architecture_health.module_health
+      .filter((module) => module.risk_level !== "low")
+      .sort((a, b) => b.risk_score - a.risk_score)
+      .slice(0, 4)
+      .forEach((module) => {
+        items.push({
+          id: `module:${module.name}`,
+          priority: module.risk_level,
+          title: `Reduce ${module.name} module risk`,
+          detail: `${module.files} files · complexity ${module.complexity_score}/100 · risk ${module.risk_score}/100`,
+          path: module.name,
+        });
+      });
+    result.symbol_intelligence.duplicate_function_groups.slice(0, 3).forEach((group, index) => {
+      items.push({
+        id: `duplicate:${index}`,
+        priority: "medium",
+        title: "Review duplicated function logic",
+        detail: group.map((item) => `${item.name} · ${item.path}:${item.line}`).join(" | "),
+        path: group[0]?.path,
+      });
+    });
+    result.symbol_intelligence.dead_function_candidates.slice(0, 4).forEach((item) => {
+      items.push({
+        id: `unused:${item.id}`,
+        priority: "low",
+        title: `Check whether ${item.name} is still needed`,
+        detail: `${item.path}:${item.line} · Static analysis found no resolved callers`,
+        path: item.path,
+      });
+    });
+    const rank = { high: 0, medium: 1, low: 2 };
+    return items.sort((a, b) => rank[a.priority] - rank[b.priority]).slice(0, 10);
+  }, [result]);
   const graphMetrics = useMemo(() => {
     const degree = new Map<string, number>();
     const adjacency = new Map<string, string[]>();
@@ -1399,6 +1455,27 @@ function Explorer() {
                   {!result.architecture_health.module_health.length && <p className="text-xs text-slate-500">No module groups available.</p>}
                 </div>
                 <p className="text-[10px] leading-4 text-slate-600">{result.architecture_health.health_note}</p>
+              </div>
+              <div id="improvement-roadmap" className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={16} className="text-emerald-300" /> Improvement roadmap</div>
+                  <span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] text-slate-400">{improvementRoadmap.length} actions</span>
+                </div>
+                <p className="mb-3 text-[11px] leading-5 text-slate-500">Prioritized from static scan evidence. Review each item before changing code; these are recommendations, not confirmed defects.</p>
+                {improvementRoadmap.length ? (
+                  <div className="space-y-2">
+                    {improvementRoadmap.map((item) => (
+                      <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-200">{item.title}</span>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ${item.priority === "high" ? "bg-rose-400/10 text-rose-300" : item.priority === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-slate-400/10 text-slate-300"}`}>{item.priority}</span>
+                        </div>
+                        <p className="mt-2 break-words text-[10px] leading-5 text-slate-400">{item.detail}</p>
+                        {item.path && <button onClick={() => { void openSource(item.path!); }} className="mt-2 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] text-emerald-200 hover:bg-white/5">Inspect related code</button>}
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="rounded-lg bg-black/20 p-3 text-xs text-emerald-200">No roadmap items were generated from the current scan. This does not guarantee the project is issue-free.</p>}
               </div>
               <div id="code-intelligence-panel" className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-cyan-300" /> Code intelligence pro</div>
