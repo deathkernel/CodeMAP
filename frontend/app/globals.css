@@ -36,7 +36,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline: 2px solid rgba(139,156,255,.78);
   outline-offset: 2px;
 }
-main.min-h-screen { padding: 22px 32px 0; }
+main.min-h-screen { width: 100%; padding: 18px 24px 0; }
 main > header {
   min-height: 68px;
   padding-bottom: 18px;
@@ -56,9 +56,9 @@ main > header > div:first-child > div:last-child > div:last-child {
   font-size: 9px;
   letter-spacing: .24em;
 }
-main > section { padding-top: 52px; }
+main > section { width: 100%; padding-top: 30px; }
 main > section > div:first-child h1 {
-  font-size: clamp(2.7rem, 5vw, 4.25rem);
+  font-size: clamp(2.35rem, 4vw, 3.6rem);
   line-height: 1.04;
   letter-spacing: -.065em;
   font-weight: 650;
@@ -153,8 +153,8 @@ footer { color: #66758b; border-color: var(--line); }
   main > section > div:nth-of-type(3) { margin-top: 22px; }
 }
 @media (max-width: 768px) {
-  main.min-h-screen { padding: 16px 16px 0; }
-  main > section { padding-top: 38px; }
+  main.min-h-screen { padding: 14px 14px 0; }
+  main > section { padding-top: 24px; }
   main > section > div:first-child h1 { font-size: clamp(2.5rem, 11vw, 3.4rem); }
   main > section > div:nth-of-type(2):has(form) { padding: 8px; }
 }
