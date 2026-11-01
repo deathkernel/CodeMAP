@@ -13,7 +13,7 @@ from app.services.analyzer import analyze_sources_incremental, architecture_insi
 from app.services.bug_detector import scan_for_bugs_incremental
 from app.services.repository_scanner import MAX_FILE_BYTES, RepositoryError, parse_github_url, scan_github_repository
 from app.services.zip_scanner import ArchiveError, MAX_ARCHIVE_BYTES, read_zip_sources
-from app.services.code_index import delete_project_index, index_project_sources_incremental, make_stable_project_id, create_embedding_job, run_embedding_job, get_index_job, count_project_embeddings, count_project_chunks
+from app.services.code_index import delete_project_index, index_project_sources_incremental, make_stable_project_id, create_embedding_job, run_embedding_job, get_index_job, count_project_embeddings
 
 router = APIRouter(prefix="/api/repository", tags=["analysis"])
 MAX_ANALYZED_FILES = 1000
@@ -102,7 +102,7 @@ async def analyze_github(request: AnalyzeRequest, background_tasks: BackgroundTa
         project_id, sources,
         prune_missing=(not inventory.get("tree_truncated", False) and len(sources) == inventory["file_count"]),
     )
-    indexed_chunks = count_project_chunks(project_id)
+    indexed_chunks = index_update["indexed_chunks"]
     embedding_job = create_embedding_job(project_id)
     if embedding_job["created"]:
         background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
@@ -168,7 +168,7 @@ async def analyze_local_folder(request: FolderAnalyzeRequest, background_tasks: 
 
     project_id = make_stable_project_id(request.folder_name, "Local folder")
     index_update = index_project_sources_incremental(project_id, sources, prune_missing=True)
-    indexed_chunks = count_project_chunks(project_id)
+    indexed_chunks = index_update["indexed_chunks"]
     embedding_job = create_embedding_job(project_id)
     if embedding_job["created"]:
         background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
@@ -222,7 +222,7 @@ async def analyze_zip_upload(background_tasks: BackgroundTasks, file: UploadFile
         index_update = index_project_sources_incremental(
             project_id, sources, prune_missing=(archive["files_skipped_by_limit"] == 0),
         )
-        indexed_chunks = count_project_chunks(project_id)
+        indexed_chunks = index_update["indexed_chunks"]
         embedding_job = create_embedding_job(project_id)
         if embedding_job["created"]:
             background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)

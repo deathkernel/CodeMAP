@@ -598,19 +598,6 @@ def get_index_job(job_id: str) -> dict[str, Any] | None:
 
 
 
-def count_project_chunks(project_id: str) -> int:
-    """Count all persisted source chunks, including unchanged files."""
-    connection, has_fts = _connect()
-    table = "code_chunks" if has_fts else "code_chunks_plain"
-    try:
-        return connection.execute(
-            f"SELECT COUNT(*) FROM {table} WHERE project_id = ?",
-            (project_id,),
-        ).fetchone()[0]
-    finally:
-        connection.close()
-
-
 def count_project_embeddings(project_id: str) -> int:
     """Count stored vectors for one project without loading their payloads."""
     connection, _ = _connect()

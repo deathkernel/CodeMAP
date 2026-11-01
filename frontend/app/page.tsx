@@ -11,232 +11,17 @@ import ReactFlow, {
   type Node,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import type { AnalysisResult } from "@/lib/types";
+import { API_BASE } from "@/lib/config";
+import { buildFileTree, hasTreeMatch, type FileTreeItem } from "@/lib/file-tree";
+import { getFileIcon } from "@/lib/file-icons";
+import { getFolderGroup, getGraphPositions, getLanguageStyle, toMermaid } from "@/lib/graph";
+import { Feature, Metric } from "@/components/ui";
 import {
-  ArrowRight, Boxes, Bug, ChevronDown, ChevronRight, Code2, FileCode2,
-  FileArchive, FileJson, FileText, Folder, FolderOpen, Github, LoaderCircle,
+  ArrowRight, Boxes, Bug, ChevronDown, ChevronRight, FileCode2,
+  FileArchive, Folder, FolderOpen, Github, LoaderCircle,
   Network, Search, ShieldCheck, Sparkles, Workflow,
 } from "lucide-react";
-
-type AnalysisResult = {
-  project_id: string;
-  indexed_chunks: number;
-  repository: string;
-  default_branch: string;
-  nodes: Array<{ id: string; label: string; path: string; language: string; lines: number }>;
-  edges: Array<{ id: string; source: string; target: string; label: string }>;
-  stats: {
-    files_analyzed: number;
-    dependencies_found: number;
-    relative_imports_unresolved: number;
-    files_not_fetched: number;
-  };
-  analysis_note: string;
-  bug_findings: Array<{ id: string; path: string; line: number; rule_id: string; title: string; severity: "high" | "medium" | "low"; message: string; recommendation: string }>;
-  bug_stats: { total: number; by_severity: { high: number; medium: number; low: number }; files_scanned: number; truncated: boolean };
-  bug_analysis_note: string;
-  code_intelligence: {
-    bottleneck_files: Array<{ path: string; fan_in: number; fan_out: number; connections: number }>;
-    unreferenced_files: Array<{ path: string; reason: string }>;
-    dependency_depth: { max_depth: number; reachable_files: number; unreachable_files: number; deepest_files: string[] };
-    code_intelligence_note: string;
-  };
-  symbol_intelligence: {
-    symbols: Array<{ id: string; path: string; name: string; qualified_name: string; kind: "function" | "class"; line: number; end_line: number }>;
-    call_edges: Array<{ id: string; source_path: string; target_path: string; caller: string; callee: string; line: number; target_line: number }>;
-    inheritance_edges: Array<{ path: string; child: string; parent: string; line: number; resolved: boolean }>;
-    dead_function_candidates: Array<{ id: string; path: string; name: string; qualified_name: string; line: number }>;
-    duplicate_function_groups: Array<Array<{ path: string; name: string; line: number }>>;
-    symbol_stats: { symbols: number; functions: number; classes: number; resolved_call_links: number; inheritance_links: number; dead_function_candidates: number; duplicate_function_groups: number };
-    symbol_note: string;
-  };
-  advanced_architecture: {
-    frameworks: string[];
-    entry_points: Array<{ path: string; framework: string; reason: string }>;
-    api_endpoints: Array<{ path: string; line: number; method: string; route: string; framework: string }>;
-    database_relations: Array<{ path: string; line: number; source_model: string; target: string; kind: string }>;
-    module_dependencies: Array<{ source: string; target: string; imports: number }>;
-    stats: { frameworks_detected: number; entry_points: number; api_endpoints: number; database_relations: number; cross_module_links: number };
-    note: string;
-  };
-  architecture_insights: {
-    entry_points: Array<{ path: string; reason: string }>;
-    circular_dependencies: string[][];
-    module_groups: Array<{ name: string; files: number }>;
-    architecture_stats: { entry_points: number; circular_dependency_groups: number; top_level_modules: number };
-    architecture_note: string;
-  };
-  architecture_health: {
-    health_score: number;
-    health_grade: "healthy" | "watch" | "needs_attention";
-    risk_factors: string[];
-    module_health: Array<{
-      name: string; files: number; lines: number; dependencies: number;
-      internal_dependencies: number; external_dependencies: number; circular_files: number;
-      bug_counts: { high: number; medium: number; low: number };
-      complexity_score: number; risk_score: number; risk_level: "high" | "medium" | "low";
-    }>;
-    health_stats: { modules: number; high_risk_modules: number; medium_risk_modules: number; circular_files: number; bug_findings: number };
-    health_note: string;
-  };
-};
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-const EMPTY_NODE_TYPES = {};
-const EMPTY_EDGE_TYPES = {};
-
-function toMermaid(nodes: AnalysisResult["nodes"], edges: AnalysisResult["edges"]) {
-  const lines = ["flowchart LR"];
-  const ids = new Map(nodes.map((node, index) => [node.id, `F${index}`]));
-  const folders = [...new Set(nodes.map((node) => getFolderGroup(node.path)))].sort();
-
-  folders.forEach((folder, folderIndex) => {
-    const folderId = `GROUP_${folderIndex}`;
-    lines.push(`  subgraph ${folderId}["${folder.replaceAll('"', "'")}"]`);
-    nodes.filter((node) => getFolderGroup(node.path) === folder).forEach((node) => {
-      const id = ids.get(node.id);
-      if (id) lines.push(`    ${id}["${node.path.replaceAll('"', "'").replaceAll("\n", " ")}"]`);
-    });
-    lines.push("  end");
-  });
-
-  edges.forEach((edge) => {
-    const from = ids.get(edge.source);
-    const to = ids.get(edge.target);
-    if (from && to) lines.push(`  ${from} --> ${to}`);
-  });
-  return lines.join("\n");
-}
-
-type FileTreeItem = { name: string; path: string; isFolder: boolean; children: FileTreeItem[] };
-
-function buildFileTree(nodes: AnalysisResult["nodes"]): FileTreeItem[] {
-  const root: FileTreeItem = { name: "", path: "", isFolder: true, children: [] };
-  for (const file of nodes) {
-    const parts = file.path.split("/").filter(Boolean);
-    let current = root;
-    let currentPath = "";
-    parts.forEach((part, index) => {
-      currentPath = currentPath ? currentPath + "/" + part : part;
-      const isFolder = index < parts.length - 1;
-      let item = current.children.find((child) => child.name === part);
-      if (!item) {
-        item = { name: part, path: currentPath, isFolder, children: [] };
-        current.children.push(item);
-      }
-      current = item;
-    });
-  }
-  const sortItems = (items: FileTreeItem[]) => {
-    items.sort((a, b) => a.isFolder !== b.isFolder ? (a.isFolder ? -1 : 1) : a.name.localeCompare(b.name));
-    items.forEach((item) => sortItems(item.children));
-  };
-  sortItems(root.children);
-  return root.children;
-}
-
-function hasTreeMatch(item: FileTreeItem, query: string): boolean {
-  if (!query || item.path.toLowerCase().includes(query.toLowerCase())) return true;
-  return item.children.some((child) => hasTreeMatch(child, query));
-}
-
-function getFileIcon(path: string) {
-  const extension = path.split(".").pop()?.toLowerCase();
-  if (["json", "jsonc"].includes(extension || "")) return FileJson;
-  if (["md", "txt", "mdx"].includes(extension || "")) return FileText;
-  if (["py", "js", "jsx", "ts", "tsx", "java", "go", "rs", "cpp", "c", "cs"].includes(extension || "")) return Code2;
-  return FileCode2;
-}
-
-function getFolderGroup(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  return parts.length > 1 ? parts[0] : "(root)";
-}
-
-function getLanguageStyle(language: string) {
-  const styles: Record<string, { border: string; background: string; text: string }> = {
-    py: { border: "#3b82f6", background: "#102039", text: "#93c5fd" },
-    ts: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
-    tsx: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
-    js: { border: "#eab308", background: "#29230e", text: "#fde047" },
-    jsx: { border: "#eab308", background: "#29230e", text: "#fde047" },
-    json: { border: "#a78bfa", background: "#211a35", text: "#c4b5fd" },
-    css: { border: "#ec4899", background: "#301629", text: "#f9a8d4" },
-    html: { border: "#f97316", background: "#301d12", text: "#fdba74" },
-  };
-  return styles[language.toLowerCase()] || { border: "#64748b", background: "#172033", text: "#cbd5e1" };
-}
-
-function getGraphPositions(result: AnalysisResult) {
-  const folders = [...new Set(result.nodes.map((node) => getFolderGroup(node.path)))].sort();
-  const outgoing = new Map<string, string[]>();
-  const indegree = new Map<string, number>();
-  const rank = new Map<string, number>();
-  const degree = new Map<string, number>();
-
-  result.nodes.forEach((node) => {
-    outgoing.set(node.id, []);
-    indegree.set(node.id, 0);
-    rank.set(node.id, 0);
-    degree.set(node.id, 0);
-  });
-  result.edges.forEach((edge) => {
-    if (!outgoing.has(edge.source) || !indegree.has(edge.target)) return;
-    outgoing.get(edge.source)?.push(edge.target);
-    indegree.set(edge.target, (indegree.get(edge.target) || 0) + 1);
-    degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
-    degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
-  });
-
-  const queue = result.nodes
-    .filter((node) => indegree.get(node.id) === 0)
-    .map((node) => node.id)
-    .sort();
-  let cursor = 0;
-  while (cursor < queue.length) {
-    const current = queue[cursor++];
-    for (const target of outgoing.get(current) || []) {
-      rank.set(target, Math.max(rank.get(target) || 0, (rank.get(current) || 0) + 1));
-      const remaining = (indegree.get(target) || 0) - 1;
-      indegree.set(target, remaining);
-      if (remaining === 0) queue.push(target);
-    }
-  }
-
-  const unresolved = result.nodes.filter((node) => (indegree.get(node.id) || 0) > 0);
-  const nextRank = Math.max(0, ...rank.values()) + 1;
-  unresolved.forEach((node) => rank.set(node.id, nextRank));
-
-  const positions = new Map<string, { x: number; y: number }>();
-  const columns = new Map<number, typeof result.nodes>();
-
-  result.nodes.forEach((node) => {
-    const column = rank.get(node.id) || 0;
-    columns.set(column, [...(columns.get(column) || []), node]);
-  });
-
-  columns.forEach((columnNodes, column) => {
-    columnNodes.sort((a, b) =>
-      getFolderGroup(a.path).localeCompare(getFolderGroup(b.path)) ||
-      (degree.get(b.id) || 0) - (degree.get(a.id) || 0) ||
-      a.path.localeCompare(b.path),
-    );
-
-    // Wrap large rank columns into compact sub-columns instead of placing
-    // hundreds of files in one tall strip. This is especially important when
-    // a repository has no locally-resolved imports.
-    columnNodes.forEach((node, index) => {
-      const subColumn = Math.floor(index / 7);
-      const row = index % 7;
-      positions.set(node.id, {
-        x: column * 520 + subColumn * 250,
-        y: row * 170,
-      });
-    });
-  });
-
-  return positions;
-}
 
 function Explorer() {
   const [url, setUrl] = useState("");
@@ -332,60 +117,6 @@ function Explorer() {
     () => [...new Set((result?.nodes || []).map((node) => node.language).filter(Boolean))].sort(),
     [result],
   );
-
-  const improvementRoadmap = useMemo(() => {
-    if (!result) return [];
-    const items: Array<{ id: string; priority: "high" | "medium" | "low"; title: string; detail: string; path?: string }> = [];
-    result.bug_findings.slice(0, 5).forEach((finding) => {
-      items.push({
-        id: `bug:${finding.id}`,
-        priority: finding.severity,
-        title: finding.title,
-        detail: `${finding.path}:${finding.line} · ${finding.recommendation}`,
-        path: finding.path,
-      });
-    });
-    result.architecture_insights.circular_dependencies.slice(0, 4).forEach((cycle, index) => {
-      items.push({
-        id: `cycle:${index}`,
-        priority: "high",
-        title: "Break a circular dependency",
-        detail: cycle.join(" → "),
-      });
-    });
-    result.architecture_health.module_health
-      .filter((module) => module.risk_level !== "low")
-      .sort((a, b) => b.risk_score - a.risk_score)
-      .slice(0, 4)
-      .forEach((module) => {
-        items.push({
-          id: `module:${module.name}`,
-          priority: module.risk_level,
-          title: `Reduce ${module.name} module risk`,
-          detail: `${module.files} files · complexity ${module.complexity_score}/100 · risk ${module.risk_score}/100`,
-        });
-      });
-    result.symbol_intelligence.duplicate_function_groups.slice(0, 3).forEach((group, index) => {
-      items.push({
-        id: `duplicate:${index}`,
-        priority: "medium",
-        title: "Review duplicated function logic",
-        detail: group.map((item) => `${item.name} · ${item.path}:${item.line}`).join(" | "),
-        path: group[0]?.path,
-      });
-    });
-    result.symbol_intelligence.dead_function_candidates.slice(0, 4).forEach((item) => {
-      items.push({
-        id: `unused:${item.id}`,
-        priority: "low",
-        title: `Check whether ${item.name} is still needed`,
-        detail: `${item.path}:${item.line} · Static analysis found no resolved callers`,
-        path: item.path,
-      });
-    });
-    const rank = { high: 0, medium: 1, low: 2 };
-    return items.sort((a, b) => rank[a.priority] - rank[b.priority]).slice(0, 10);
-  }, [result]);
   const graphMetrics = useMemo(() => {
     const degree = new Map<string, number>();
     const adjacency = new Map<string, string[]>();
@@ -1071,8 +802,8 @@ function Explorer() {
   const selectedNode = result?.nodes.find((node) => node.id === selected);
 
   return (
-    <main className="min-h-screen w-full px-4 py-5 md:px-6 2xl:px-10">
-      <header className="mx-auto flex w-full max-w-[1800px] items-center justify-between border-b border-white/10 pb-5">
+    <main className="min-h-screen px-5 py-6 md:px-10">
+      <header className="mx-auto flex max-w-[1500px] items-center justify-between border-b border-white/10 pb-5">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-indigo-500/15 p-2.5 text-indigo-300"><Boxes size={22} /></div>
           <div><div className="text-lg font-bold tracking-tight">CodeMap</div><div className="text-[10px] tracking-[0.2em] text-slate-500">CODEBASE INTELLIGENCE</div></div>
@@ -1088,17 +819,14 @@ function Explorer() {
         }</div>
       </header>
 
-      <section className="mx-auto w-full max-w-[1800px] py-7 lg:py-8">
-        {!result && (
-        <div className="mb-6 max-w-5xl">
+      <section className="mx-auto max-w-[1500px] py-10">
+        <div className="mb-8 max-w-3xl">
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-indigo-300"><Sparkles size={14} /> See how your code connects</div>
           <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Every file has a place.<br /><span className="text-indigo-300">See the whole system.</span></h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">Map repository dependencies, navigate source files, and uncover the structure behind your project. Your AI stays local with Ollama.</p>
         </div>
 
-         )}
-
-       <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 md:flex-row">
+        <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3 md:flex-row">
           <form onSubmit={analyze} className="flex min-w-0 flex-1 flex-col gap-3 md:flex-row">
           <div className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-[#080d17] px-4">
             <Github size={18} className="text-slate-500" />
@@ -1120,42 +848,8 @@ function Explorer() {
         {error && <p role="alert" className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-300">{error}</p>}
 
         {result ? (
-          <div className="mt-5 w-full space-y-4">
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <Metric label="Files analyzed" value={result.stats.files_analyzed} />
-              <Metric label="Dependencies" value={result.stats.dependencies_found} />
-              <Metric label="Bug findings" value={result.bug_stats.total} />
-              <Metric label="Health score" value={result.architecture_health.health_score} />
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0b1220] px-4 py-3">
-              <div className="min-w-0"><div className="truncate text-sm font-semibold">{result.repository}</div><div className="text-[10px] text-slate-500">Branch: {result.default_branch} · {result.nodes.length} files analyzed</div></div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={exportPng} className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">Export PNG</button>
-                <button onClick={exportMermaid} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Mermaid</button>
-                <button onClick={exportJson} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">JSON</button>
-                <button onClick={exportPdf} className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200">PDF report</button>
-                <button onClick={saveReportSnapshot} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300">Snapshot</button>
-                <button onClick={compareReportSnapshots} className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">Compare</button>
-              </div>
-            </div>
-            <nav className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-[#0b1220] p-2 text-xs">
-              <a href="#architecture-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Architecture</a>
-              <a href="#health-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Health & risk</a>
-              <a href="#improvement-roadmap" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Improvement plan</a>
-              <a href="#bugs-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Bug scan</a>
-              <a href="#symbols-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Symbols</a>
-              <a href="#search-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Code search</a>
-              <a href="#all-bugs-panel" className="rounded-lg px-3 py-2 text-rose-200 hover:bg-rose-400/10">All bugs</a>
-            </nav>
-            <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
-            <aside className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
-              <div className="border-b border-white/10 px-3 py-3"><div className="text-xs font-semibold">Project files</div><div className="mt-1 text-[10px] text-slate-500">{result.nodes.length} files</div></div>
-              <div className="p-3">
-                <div className="relative mb-3"><Search size={13} className="absolute left-3 top-3 text-slate-500" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files..." className="h-9 w-full rounded-lg border border-white/10 bg-black/20 pl-9 pr-3 text-xs outline-none" /></div>
-                <div className="max-h-[72vh] overflow-auto">{fileTree.length ? renderTree(fileTree) : <p className="p-3 text-xs text-slate-500">No files to display.</p>}</div>
-              </div>
-            </aside>
-            <section className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
+          <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_290px]">
+            <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
                 <div><div className="font-semibold">{result.repository}</div><div className="mt-1 text-xs text-slate-500">Branch: {result.default_branch}</div></div>
                 <div className="flex flex-wrap gap-2">
@@ -1211,30 +905,15 @@ function Explorer() {
                 <button onClick={() => setHighlightDependencies((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (highlightDependencies ? "border-indigo-400/30 bg-indigo-500/10 text-indigo-200" : "border-white/10 text-slate-400")}>{highlightDependencies ? "Dependency path: on" : "Dependency path: off"}</button>
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
-              <div className="relative h-[calc(100vh-300px)] min-h-[560px]">
-                {result.edges.length === 0 && (
-                  <div className="absolute left-4 right-4 top-4 z-10 rounded-xl border border-amber-400/20 bg-slate-950/90 px-4 py-3 text-xs text-amber-100 shadow-lg">
-                    No local import connections were resolved. Files are arranged in an overview grid so the canvas remains explorable.
-                    <span className="ml-2 text-amber-200/70">Check import aliases and analyzed source paths for deeper dependency links.</span>
-                  </div>
-                )}
-                {visibleGraphNodes.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-slate-400">
-                    <Network size={28} className="text-cyan-300" />
-                    <p className="text-sm font-semibold text-slate-200">No files in this view</p>
-                    <p className="max-w-sm text-xs">Change the folder filter or turn off disconnected-only mode to see the analyzed files.</p>
-                  </div>
-                ) : (
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} nodeTypes={EMPTY_NODE_TYPES} edgeTypes={EMPTY_EDGE_TYPES} fitView fitViewOptions={{ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 }} onInit={(instance) => { window.requestAnimationFrame(() => instance.fitView({ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 })); }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.04}>
+              <div className="h-[620px]">
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
                 </ReactFlow>
-                )}
               </div>
             </section>
-            </div>
-            <aside className="analysis-grid grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            <aside className="space-y-4">
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Workflow size={16} className="text-indigo-300" /> Analysis overview</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1335,7 +1014,7 @@ function Explorer() {
                   <p className="mt-3 text-[10px] leading-4 text-slate-600">Paths include only dependencies resolved inside the analyzed file set. Dynamic imports and external packages may not appear.</p>
                 </div>
               )}
-              <div id="architecture-panel"  className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-indigo-300" /> Architecture intelligence</div>
                   <button onClick={() => { void explainArchitecture(); }} disabled={architectureAiLoading}
@@ -1426,7 +1105,7 @@ function Explorer() {
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.architecture_insights.architecture_note}</p>
                 <p className="mt-2 text-[10px] leading-4 text-slate-600">{result.advanced_architecture.note}</p>
               </div>
-              <div id="health-panel"  className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck size={16} className="text-emerald-300" /> Architecture health</div>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${result.architecture_health.health_grade === "healthy" ? "bg-emerald-400/10 text-emerald-300" : result.architecture_health.health_grade === "watch" ? "bg-amber-400/10 text-amber-300" : "bg-rose-400/10 text-rose-300"}`}>{result.architecture_health.health_score}/100 · {result.architecture_health.health_grade.replaceAll("_", " ")}</span>
@@ -1459,28 +1138,7 @@ function Explorer() {
                 </div>
                 <p className="text-[10px] leading-4 text-slate-600">{result.architecture_health.health_note}</p>
               </div>
-              <div id="improvement-roadmap" className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={16} className="text-emerald-300" /> Improvement roadmap</div>
-                  <span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] text-slate-400">{improvementRoadmap.length} actions</span>
-                </div>
-                <p className="mb-3 text-[11px] leading-5 text-slate-500">Prioritized from static scan evidence. Review each item before changing code; these are recommendations, not confirmed defects.</p>
-                {improvementRoadmap.length ? (
-                  <div className="space-y-2">
-                    {improvementRoadmap.map((item) => (
-                      <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-xs font-semibold text-slate-200">{item.title}</span>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase ${item.priority === "high" ? "bg-rose-400/10 text-rose-300" : item.priority === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-slate-400/10 text-slate-300"}`}>{item.priority}</span>
-                        </div>
-                        <p className="mt-2 break-words text-[10px] leading-5 text-slate-400">{item.detail}</p>
-                        {item.path && <button onClick={() => { void openSource(item.path!); }} className="mt-2 rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] text-emerald-200 hover:bg-white/5">Inspect related code</button>}
-                      </div>
-                    ))}
-                  </div>
-                ) : <p className="rounded-lg bg-black/20 p-3 text-xs text-emerald-200">No roadmap items were generated from the current scan. This does not guarantee the project is issue-free.</p>}
-              </div>
-              <div id="code-intelligence-panel" className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-cyan-300" /> Code intelligence pro</div>
                 <div className="mb-4 grid grid-cols-3 gap-2">
                   <Metric label="Max depth" value={result.code_intelligence.dependency_depth.max_depth} />
@@ -1511,7 +1169,7 @@ function Explorer() {
                 )}
                 <p className="text-[10px] leading-4 text-slate-600">{result.code_intelligence.code_intelligence_note}</p>
               </div>
-              <div id="bugs-panel"  className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm font-semibold"><Bug size={16} className="text-amber-300" /> Static bug scan</div>
                   <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-slate-300">{result.bug_stats.total} findings</span>
@@ -1547,7 +1205,7 @@ function Explorer() {
                 ) : <p className="text-xs leading-5 text-slate-400">No supported risky patterns found in the scanned files.</p>}
                 <p className="mt-3 text-[10px] leading-4 text-slate-600">{result.bug_analysis_note}</p>
               </div>
-              <div id="symbols-panel"  className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.035] p-4">
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.035] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm font-semibold"><Workflow size={15} className="text-cyan-300" /> Symbol intelligence</div>
                   <span className="text-[10px] text-slate-500">{result.symbol_intelligence.symbol_stats.symbols} symbols</span>
@@ -1603,7 +1261,7 @@ function Explorer() {
                 </div>
                 <p className="mt-3 text-[9px] leading-4 text-slate-600">{result.symbol_intelligence.symbol_note}</p>
               </div>
-              <div id="search-panel"  className="rounded-2xl border border-indigo-400/20 bg-indigo-400/[0.035] p-4">
+              <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/[0.035] p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm font-semibold"><Search size={15} className="text-indigo-300" /> Code search</div>
                   <span className="text-[10px] text-slate-500">{codeSearchResults.length} matches</span>
@@ -1631,7 +1289,20 @@ function Explorer() {
                   </div>
                 ) : <p className="text-[10px] leading-4 text-slate-500">Code-content search is available after selecting a local project folder. GitHub URL analysis currently supports file/path search.</p>}
               </div>
-{selectedNode && <div className="col-span-full rounded-2xl border border-indigo-400/20 bg-indigo-400/5 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><FileCode2 size={15} /> Selected file</div><div className="break-all text-xs text-indigo-200">{selectedNode.path}</div><div className="mt-2 text-xs text-slate-400">{selectedNode.language} · {selectedNode.lines} lines</div><div className="mt-3 flex gap-2">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><FolderOpen size={15} /> File explorer</div>
+                  <span className="text-[10px] text-slate-500">{result.nodes.length} files</span>
+                </div>
+                <div className="relative mb-3">
+                  <Search size={13} className="absolute left-3 top-3 text-slate-500" />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files and folders..." className="h-9 w-full rounded-lg border border-white/10 bg-black/20 pl-9 pr-3 text-xs outline-none focus:border-indigo-400/40" />
+                </div>
+                <div className="max-h-[420px] overflow-auto">
+                  {fileTree.length ? renderTree(fileTree) : <p className="p-3 text-xs text-slate-500">No files to display.</p>}
+                </div>
+              </div>
+              {selectedNode && <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/5 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><FileCode2 size={15} /> Selected file</div><div className="break-all text-xs text-indigo-200">{selectedNode.path}</div><div className="mt-2 text-xs text-slate-400">{selectedNode.language} · {selectedNode.lines} lines</div><div className="mt-3 flex gap-2">
                   <button onClick={() => void openSource(selectedNode.path)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Open source</button>
                   <button disabled={!source || aiLoading} onClick={() => void explainSource()} className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{aiLoading ? "Thinking..." : "Explain with Ollama"}</button>
                 </div>
@@ -1649,49 +1320,7 @@ function Explorer() {
                 {aiError && <p role="alert" className="mt-3 text-xs text-rose-300">{aiError}</p>}
                 {explanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-6 text-slate-300">{explanation}</div>}
               </div>}
-              <section id="all-bugs-panel" className="col-span-full rounded-2xl border border-rose-400/20 bg-rose-400/[0.025] p-5">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-semibold"><Bug size={17} className="text-rose-300" /> All detected bugs</div>
-                    <p className="mt-1 text-xs text-slate-500">Complete list of findings from this scan, across all analyzed files.</p>
-                  </div>
-                  <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1.5 text-xs font-semibold text-rose-200">{result.bug_findings.length} total findings</span>
-                </div>
-                <div className="mb-4 grid grid-cols-3 gap-2">
-                  <Metric label="High severity" value={result.bug_stats.by_severity.high} />
-                  <Metric label="Medium severity" value={result.bug_stats.by_severity.medium} />
-                  <Metric label="Low severity" value={result.bug_stats.by_severity.low} />
-                </div>
-                {result.bug_findings.length ? (
-                  <div className="space-y-3">
-                    {result.bug_findings.map((finding, index) => (
-                      <article key={finding.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="flex min-w-0 items-start gap-2">
-                            <span className="mt-0.5 text-[10px] tabular-nums text-slate-600">#{index + 1}</span>
-                            <h3 className="text-sm font-semibold text-slate-100">{finding.title}</h3>
-                          </div>
-                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${finding.severity === "high" ? "bg-rose-400/10 text-rose-300" : finding.severity === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-slate-400/10 text-slate-300"}`}>{finding.severity}</span>
-                        </div>
-                        <button onClick={() => { void openSource(finding.path, finding.line); }} className="mt-2 break-all text-left text-[11px] text-cyan-200 hover:text-cyan-100">{finding.path}:{finding.line} · Open source</button>
-                        <p className="mt-2 text-xs leading-5 text-slate-300">{finding.message}</p>
-                        <p className="mt-2 text-xs leading-5 text-slate-500"><span className="font-semibold text-slate-400">Suggested fix:</span> {finding.recommendation}</p>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <button onClick={() => { void openSource(finding.path, finding.line); }} className="rounded-lg border border-white/10 px-3 py-2 text-[11px] text-slate-300 hover:bg-white/5">Open file</button>
-                          <button disabled={bugAiLoadingId !== null} onClick={() => { void explainBug(finding); }} className="rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-3 py-2 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-50">
-                            {bugAiLoadingId === finding.id ? "Analyzing…" : "Explain with AI"}
-                          </button>
-                        </div>
-                        {bugAiFindingId === finding.id && bugAiLoadingId === finding.id && <p className="mt-2 text-[11px] text-indigo-300">{aiStatus}</p>}
-                        {bugAiFindingId === finding.id && bugAiError && <p role="alert" className="mt-2 text-[11px] text-rose-300">{bugAiError}</p>}
-                        {bugAiFindingId === finding.id && bugAiExplanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-5 text-slate-300">{bugAiExplanation}</div>}
-                      </article>
-                    ))}
-                  </div>
-                ) : <p className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-4 text-sm text-emerald-200">No bug findings were reported in this scan.</p>}
-                <p className="mt-4 text-[10px] leading-4 text-slate-600">{result.bug_analysis_note}</p>
-              </section>
-              <p className="col-span-full text-[11px] leading-5 text-slate-600">{result.analysis_note}</p>
+              <p className="text-[11px] leading-5 text-slate-600">{result.analysis_note}</p>
             </aside>
           </div>
         ) : (
@@ -1705,14 +1334,6 @@ function Explorer() {
       <footer className="mx-auto max-w-[1500px] border-t border-white/10 py-5 text-center text-xs text-slate-600">CodeMap · Your code stays yours · Early development</footer>
     </main>
   );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-xl bg-black/20 p-3"><div className="text-2xl font-semibold tabular-nums">{value}</div><div className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">{label}</div></div>;
-}
-
-function Feature({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
-  return <article className="rounded-2xl border border-white/10 bg-white/[0.025] p-5"><div className="mb-4 inline-flex rounded-xl bg-indigo-500/10 p-2.5 text-indigo-300">{icon}</div><h2 className="font-medium">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-400">{text}</p></article>;
 }
 
 export default function Home() {

@@ -1,83 +1,209 @@
 # CodeMap
 
-AI-powered codebase intelligence for understanding repositories locally.
+**Understand any codebase locally: dependency graphs, architecture health, static findings, and AI explanations powered by your own Ollama model.**
 
-CodeMap accepts a public GitHub repository URL or a ZIP upload, maps source files and dependencies, highlights potential issues, and explains code using a local Ollama model.
+CodeMap takes a public GitHub repository, a local folder, or a ZIP upload and turns it into an interactive map. It shows which files import which, where the architectural hotspots are, and what the likely risks look like. It also answers project-scoped questions using real source excerpts. Repository code is **parsed as text and never executed**, and AI requests go only to a local Ollama endpoint.
 
-## Planned stack
+![status](https://img.shields.io/badge/status-beta-orange)
+![backend](https://img.shields.io/badge/backend-FastAPI-009688)
+![frontend](https://img.shields.io/badge/frontend-Next.js%2015-000000)
+![ai](https://img.shields.io/badge/AI-local%20Ollama-7c8cff)
+![license](https://img.shields.io/badge/license-MIT-green)
 
-- Frontend: Next.js, TypeScript, Tailwind CSS, React Flow
-- Backend: FastAPI, Python
-- Parsing: Tree-sitter (incremental language support)
-- Local AI: Ollama
-- Persistence: SQLite
+---
 
-## AI model strategy
+## Contents
 
-CodeMap uses Ollama for local AI features, including code explanation and AI-assisted explanations of potential issues.
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Project structure](#project-structure)
+- [Documentation](#documentation)
+- [Safety model](#safety-model)
+- [Status and roadmap](#status-and-roadmap)
+- [License](#license)
 
-- **Runtime:** Ollama running on the user's machine.
-- **Configuration:** Set `OLLAMA_BASE_URL` and `OLLAMA_MODEL` in the backend environment.
-- **Default model:** `hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q6_K`.
-- **Privacy:** AI prompts and source snippets are sent to the configured local Ollama endpoint. No hosted AI provider is configured.
-- **Model management:** CodeMap can check whether the configured model is installed and prepare it through Ollama.
+---
 
-## Implemented capabilities
+## Features
 
-- GitHub repository analysis, local folder analysis, and ZIP upload analysis.
-- ZIP files are inspected and read in memory; repository code is never extracted to disk or executed.
-- Static dependency graph, folder navigation, architecture insights, architecture health, and code intelligence.
-- Framework-aware architecture intelligence: candidate entry points, API route mapping, Python/Prisma/SQL relationship hints, and cross-module dependency summaries.
-- Static bug detection includes Python AST logic checks, cross-file Python and JavaScript/TypeScript import resolution, dynamic SQL construction checks, and high-signal command-execution/TLS patterns for PHP, Java, Go, Ruby, and C#.
-- Large-repository engine: stable project IDs, per-file content hashes, changed/removed-file-only SQLite chunk updates, cached per-file import extraction for incremental dependency graphs, changed-file-only bug rescans with cached findings, incremental local embeddings, persisted background embedding jobs (`GET /api/repository/jobs/{job_id}`), bounded batch writes, concurrent GitHub blob fetching, and up to 1,000 source files / 64 MB per analysis where the ingestion path supports it.
-- Static potential-issue checks for Python plus selected JavaScript/TypeScript security patterns.
-- Local Ollama explanations for source files, findings, and architecture summaries.
-- Project-scoped codebase Q&A using a local SQLite retrieval index. Python and JavaScript/TypeScript functions and classes are indexed as focused chunks where recognized; other files use bounded text chunks. Retrieval combines SQLite FTS5/BM25 keyword ranking with local Ollama vector embeddings using reciprocal-rank fusion. If the embedding model is unavailable, Q&A falls back to BM25/SQLite text search. The UI can clear a project's indexed chunks and embeddings.
-- Graph exports: PNG and Mermaid.
-- Advanced reporting: downloadable architecture/quality/security PDF reports, complete JSON analysis export, and SQLite-backed before/after snapshots with health, dependency, module-risk, and finding-count deltas. Reporting API: `POST /api/reports/architecture.pdf`, `POST /api/reports/snapshots`, and `GET /api/reports/compare/{project_id}`.
+| Area | What you get | Where it lives |
+|---|---|---|
+| **Ingestion** | GitHub URL, local folder, or ZIP upload. ZIPs are inspected in memory only. | `routes/analysis.py`, `services/zip_scanner.py` |
+| **Dependency graph** | Python and JS/TS import resolution, folder grouping, an interactive React Flow canvas, and PNG and Mermaid export. | `services/analyzer.py`, `frontend/lib/graph.ts` |
+| **Architecture intelligence** | Candidate entry points, framework detection, API route mapping, cross-module links, and circular dependency detection. | `services/analyzer.py` |
+| **Architecture health** | Per-module complexity and risk scores, a health grade, and human-readable risk factors. | `services/analyzer.py` |
+| **Symbol intelligence** | Functions and classes, resolved call edges, inheritance links, dead-code candidates, and duplicate-function groups. | `services/analyzer.py` |
+| **Static findings** | About 28 explainable rules: AST logic checks for Python, cross-file import checks, dynamic SQL, command execution, disabled TLS verification, and more. | `services/bug_detector.py` |
+| **Local AI explanations** | Explain a file, explain a finding, or explain the architecture report, all through your local Ollama model. | `routes/ai.py` |
+| **Codebase Q&A** | Ask questions about one project. Retrieval combines SQLite FTS5/BM25 with local embeddings using reciprocal-rank fusion, and falls back to keyword search if embeddings are unavailable. | `services/code_index.py` |
+| **Large repositories** | Incremental re-analysis (changed files only), cached findings and import extraction, background embedding jobs, and concurrent GitHub blob fetching. Up to 1,000 analyzed files and 64 MB of source per run. | `services/code_index.py`, `services/bug_detector.py` |
+| **Reports** | Downloadable architecture, quality, and security PDF; a full JSON export; and SQLite-backed before/after snapshots with deltas. | `routes/reports.py` |
 
-## Local semantic retrieval
+---
 
-- **Generation model:** remains `OLLAMA_MODEL` (default Qwen 3.5 9B Q6_K); this is not changed by semantic indexing.
-- **Embedding model:** `CODEMAP_EMBEDDING_MODEL` (default `nomic-embed-text`), used only through the local Ollama `/api/embed` endpoint.
-- **Install once:** run `ollama pull nomic-embed-text` on the same machine as Ollama. CodeMap does not automatically download this embedding model.
-- **Storage:** vectors and source chunks are stored in the local SQLite database and removed together when a project's index is cleared.
-- **Fallback:** if the embedding model is not installed or the local embedding endpoint is unavailable, indexing/Q&A continue with keyword retrieval; the analysis response reports `semantic_index_available` and Q&A reports its `retrieval_mode`.
-- **Privacy:** embedding requests go only to the configured local Ollama endpoint; no hosted embedding API is used.
+## How it works
 
-## Repository layout
+```mermaid
+flowchart LR
+    subgraph Input
+        GH[GitHub URL]
+        FD[Local folder]
+        ZP[ZIP upload]
+    end
+
+    subgraph Backend["Backend · FastAPI"]
+        ING[Ingestion<br/>safe and bounded]
+        ANA[Static analysis<br/>graph · architecture · symbols]
+        BUG[Static findings<br/>rule engine]
+        IDX[(SQLite<br/>chunks · FTS5 · embeddings)]
+        RPT[Reports]
+    end
+
+    subgraph Frontend["Frontend · Next.js"]
+        UI[Explorer UI<br/>graph · tree · health · Q&A]
+    end
+
+    OLL[[Local Ollama<br/>generation + embeddings]]
+
+    GH --> ING
+    FD --> ING
+    ZP --> ING
+    ING --> ANA
+    ING --> BUG
+    ING --> IDX
+    ANA --> UI
+    BUG --> UI
+    IDX --> UI
+    ANA --> RPT
+    BUG --> RPT
+    UI -- "explain / ask" --> OLL
+    IDX -- "embed" --> OLL
+```
+
+For a deeper walkthrough of modules and data flow, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Quick start
+
+**Prerequisites:** Python 3.11+, Node.js 20+, and [Ollama](https://ollama.com). Ollama is optional, because everything except AI explanations works without it.
+
+```bash
+# 1. Backend
+cd backend
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt   # runtime + test tooling
+cp ../.env.example ../.env
+uvicorn app.main:app --reload         # http://127.0.0.1:8000 · interactive docs at /docs
+
+# 2. Frontend (second terminal)
+cd frontend
+npm install
+npm run dev                        # http://localhost:3000
+```
+
+Optional local AI:
+
+```bash
+ollama pull hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q6_K   # generation model
+ollama pull nomic-embed-text                            # semantic search (optional)
+```
+
+Step-by-step instructions, including Windows PowerShell, are in [docs/development.md](docs/development.md).
+
+---
+
+## Configuration
+
+All backend settings live in `.env`, which you create from `.env.example`. Nothing secret is exposed to the frontend bundle.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Local Ollama endpoint. Keep it on localhost. |
+| `OLLAMA_MODEL` | `hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q6_K` | Generation model for explanations and Q&A. |
+| `CODEMAP_EMBEDDING_MODEL` | `nomic-embed-text` | Embedding model for semantic retrieval. |
+| `OLLAMA_REQUEST_TIMEOUT_SECONDS` | `240` | Timeout for generation requests. |
+| `CODEMAP_DATABASE_URL` | `sqlite:///./data/codemap.db` | Local SQLite store for chunks, embeddings, and snapshots. |
+| `CODEMAP_MAX_UPLOAD_MB` | `50` | Maximum ZIP upload size. |
+| `CODEMAP_MAX_ARCHIVE_FILES` | `5000` | Maximum number of entries in one archive. |
+| `CODEMAP_MAX_EXTRACTED_MB` | `250` | Maximum declared uncompressed size. |
+| `CODEMAP_MAX_SOURCE_FILE_MB` | `2` | Per-file size limit during inspection. |
+| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | Frontend-to-backend URL. |
+
+---
+
+## Project structure
 
 ```
 CodeMAP/
-├── frontend/              # Next.js web application
+├── .github/workflows/ci.yml        # Backend tests + frontend production build
 ├── backend/
-│   └── app/
-│       ├── routes/        # API endpoints
-│       ├── services/      # scanners, parser, graph, findings, Ollama
-│       └── models/        # API/domain schemas
-├── tests/
-├── docs/
+│   ├── app/
+│   │   ├── main.py                 # FastAPI app, CORS, router registration
+│   │   ├── routes/                 # HTTP layer: validation, status codes, orchestration
+│   │   │   ├── repository.py       #   inspect a GitHub repo or ZIP (no analysis)
+│   │   │   ├── source.py           #   bounded single-file preview from GitHub
+│   │   │   ├── analysis.py         #   full analysis: GitHub, folder, ZIP, jobs, index
+│   │   │   ├── ai.py               #   Ollama: status, prepare, explain, Q&A
+│   │   │   └── reports.py          #   PDF, JSON, snapshots, comparisons
+│   │   ├── services/               # Domain logic (no HTTP concerns)
+│   │   │   ├── analyzer.py         #   graph, architecture, symbols, health
+│   │   │   ├── bug_detector.py     #   static finding rules
+│   │   │   ├── code_index.py       #   SQLite chunks, FTS5, embeddings, jobs
+│   │   │   ├── repository_scanner.py   # GitHub inventory
+│   │   │   └── zip_scanner.py      #   safe, in-memory ZIP reading
+│   │   └── models/                 # Reserved for shared API schemas
+│   ├── tests/                      # pytest suite
+│   ├── requirements.txt            # runtime dependencies
+│   └── requirements-dev.txt        # + pytest
+├── frontend/
+│   ├── app/                        # Next.js App Router: page, layout, styles
+│   ├── components/                 # Reusable UI building blocks
+│   ├── lib/                        # Typed API config, graph and tree helpers
+│   └── package.json
+├── docs/                           # Architecture, API, security, analysis, setup
 ├── .env.example
 └── README.md
 ```
 
-## Safety principles
+---
 
-- Uploaded archives are treated as untrusted input.
-- ZIP extraction must reject path traversal and enforce file/count/size limits.
-- Repository code is analyzed as data and is never executed.
-- AI prompts and retrieved source excerpts are sent only to the configured local Ollama endpoint; no cloud AI provider is configured. Bounded source chunks are persisted locally in SQLite for codebase Q&A and can be cleared per project from the UI.
-- Keep local service configuration on the backend. Do not expose private configuration in frontend bundles.
-- Findings are labelled as potential issues unless independently confirmed.
+## Documentation
 
-## Development status
+| Document | Read it when you want to… |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Understand the modules, data flow, storage, and design decisions. |
+| [docs/API.md](docs/API.md) | Call the REST API directly. Every endpoint is listed with its request and response shapes. |
+| [docs/SECURITY.md](docs/SECURITY.md) | Review the threat model, the controls in place, and known limitations. |
+| [docs/ANALYSIS.md](docs/ANALYSIS.md) | Read the full codebase review: quality scorecard, findings, and prioritized roadmap. |
+| [docs/development.md](docs/development.md) | Set up a development environment on Windows, macOS, or Linux, and run the tests. |
+| [docs/ollama-setup.md](docs/ollama-setup.md) | Configure local models and see exactly what is sent to Ollama. |
 
-All five planned major feature areas are implemented: advanced static bug detection, semantic RAG, advanced architecture intelligence, large-repository processing, and advanced reporting. Testing and validation are intentionally pending.
+---
 
-## Local setup
+## Safety model
 
-See [docs/development.md](docs/development.md) for the Windows-first setup instructions.
+- **Untrusted input everywhere.** GitHub content, ZIP entries, and uploaded folders are treated as data.
+- **Nothing is executed.** Repository code is parsed with Python's `ast` module and with regular expressions. It is never imported, evaluated, or run.
+- **ZIP hardening.** Path traversal, absolute paths, backslashes, symlinks, encrypted entries, duplicate names, and oversized archives are rejected. Archives are never extracted to disk.
+- **Local-only AI.** Prompts and source excerpts go only to `OLLAMA_BASE_URL`. No hosted AI provider is configured.
+- **Findings are hypotheses.** Static findings are presented as potential issues, and the scanner attaches a note that they need human review.
+
+The full threat model and its known limitations are in [docs/SECURITY.md](docs/SECURITY.md).
+
+---
+
+## Status and roadmap
+
+CodeMap is in **beta**. All five planned feature areas are implemented: static bug detection, semantic retrieval, architecture intelligence, large-repository processing, and reporting. The backend test suite runs in CI on pushes and pull requests to `main`. Automated tests cover the backend only, and the frontend has no automated tests yet.
+
+Prioritized next steps are in [docs/ANALYSIS.md](docs/ANALYSIS.md#8-prioritized-roadmap).
+
+---
 
 ## License
 
-MIT
+Released under the MIT License.

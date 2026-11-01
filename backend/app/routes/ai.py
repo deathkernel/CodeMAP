@@ -160,22 +160,13 @@ async def _generate_local(prompt: str) -> tuple[str, bool, str]:
     base_url, model = _settings()
     try:
         downloaded = await _ensure_model(base_url, model)
-        request_timeout = float(os.getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "600"))
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=10, read=request_timeout, write=30, pool=10),
+            timeout=float(os.getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "240")),
             trust_env=False,
         ) as client:
             response = await client.post(
                 f"{base_url}/api/generate",
-                json={
-                    "model": model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "keep_alive": "10m",
-                    "options": {
-                        "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "512")),
-                    },
-                },
+                json={"model": model, "prompt": prompt, "stream": False},
             )
             response.raise_for_status()
             explanation = response.json().get("response", "")

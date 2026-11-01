@@ -25,11 +25,11 @@ def _python_imports(source: str) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imports.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            prefix = "." * node.level + (node.module or "")
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            prefix = "." * node.level + node.module
             if node.names and node.names[0].name != "*":
                 imports.extend(f"{prefix}.{alias.name}" for alias in node.names)
-            elif prefix:
+            else:
                 imports.append(prefix)
     return imports
 
@@ -39,51 +39,33 @@ def _js_imports(source: str) -> list[str]:
 
 
 def _resolve_import(source_path: str, imported: str, known_paths: set[str], python: bool = False) -> str | None:
-    candidates: list[str] = []
     if imported.startswith("."):
-        if python:
-            level = len(imported) - len(imported.lstrip("."))
-            module_path = imported[level:].replace(".", "/")
-            base = PurePosixPath(source_path).parent
-            for _ in range(max(0, level - 1)):
-                base = base.parent
-            candidate = (base / module_path).as_posix() if module_path else base.as_posix()
-        else:
-            # JavaScript/TypeScript relative specifiers use path segments:
-            # "./x" stays in the current folder; "../x" moves up one folder.
-            import posixpath
-            candidate = posixpath.normpath(
-                posixpath.join(PurePosixPath(source_path).parent.as_posix(), imported)
-            )
-        candidates.append(candidate)
+        candidate = str((PurePosixPath(source_path).parent / imported).as_posix())
+        parts: list[str] = []
+        for part in candidate.split("/"):
+            if part == "..":
+                if parts:
+                    parts.pop()
+            elif part not in {"", "."}:
+                parts.append(part)
+        candidate = "/".join(parts)
     elif python:
-        candidates.append(imported.replace(".", "/"))
-    elif imported.startswith(("@/", "~/")):
-        # Common TypeScript/Vite aliases; include project-root and src/app layouts.
-        alias_path = imported[2:].lstrip("/")
-        candidates.extend([alias_path, f"src/{alias_path}", f"app/{alias_path}"])
-        for known in known_paths:
-            for marker in ("/src/", "/app/"):
-                if marker in known:
-                    prefix = known.split(marker, 1)[0] + marker
-                    candidates.append(prefix + alias_path)
-    elif imported.startswith(("src/", "app/")):
-        candidates.append(imported)
+        candidate = imported.replace(".", "/")
     else:
         return None
 
-    extensions = ("", ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte")
-    index_extensions = ("/__init__.py", "/index.js", "/index.jsx", "/index.ts", "/index.tsx", "/index.vue", "/index.svelte")
-    for candidate in dict.fromkeys(candidates):
-        for suffix in extensions:
-            target = candidate + suffix
-            if target in known_paths:
-                return target
-        for suffix in index_extensions:
-            target = candidate + suffix
-            if target in known_paths:
-                return target
+    extensions = ("", ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
+    index_extensions = ("/__init__.py", "/index.js", "/index.jsx", "/index.ts", "/index.tsx")
+    for suffix in extensions:
+        target = candidate + suffix
+        if target in known_paths:
+            return target
+    for suffix in index_extensions:
+        target = candidate + suffix
+        if target in known_paths:
+            return target
     return None
+
 
 def analyze_sources(sources: dict[str, str], max_files: int = 300) -> dict[str, Any]:
     """Create file nodes and locally-resolved import edges from bounded source strings."""
