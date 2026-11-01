@@ -25,8 +25,8 @@ def test_typescript_relative_import_creates_edge() -> None:
 
 def test_typescript_parent_relative_import_creates_edge() -> None:
     result = analyze_sources({
-        "src/pages/home/page.tsx": "import { api } from '../../lib/api';\\n",
-        "src/lib/api.ts": "export const api = {};\\n",
+        "src/pages/home/page.tsx": "import { api } from '../../lib/api';\n",
+        "src/lib/api.ts": "export const api = {};\n",
     })
     assert len(result["edges"]) == 1
     assert result["edges"][0]["target"] == "src/lib/api.ts"
@@ -34,8 +34,8 @@ def test_typescript_parent_relative_import_creates_edge() -> None:
 
 def test_typescript_relative_import_resolves_index_file() -> None:
     result = analyze_sources({
-        "src/page.tsx": "import { Button } from './components';\\n",
-        "src/components/index.tsx": "export function Button() { return null; }\\n",
+        "src/page.tsx": "import { Button } from './components';\n",
+        "src/components/index.tsx": "export function Button() { return null; }\n",
     })
     assert len(result["edges"]) == 1
     assert result["edges"][0]["target"] == "src/components/index.tsx"
