@@ -9,7 +9,8 @@ CodeMap sends code explanations only to the Ollama endpoint configured for the b
 ```env
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q6_K
-OLLAMA_REQUEST_TIMEOUT_SECONDS=240
+OLLAMA_REQUEST_TIMEOUT_SECONDS=600
+OLLAMA_NUM_PREDICT=512
 ```
 
 4. Start CodeMap. Open a repository, select a file, then choose **Explain with Ollama**.
@@ -34,4 +35,4 @@ Each static finding can be sent to the configured local Ollama model for a deepe
 
 The Architecture intelligence panel can ask the configured local model to explain the static architecture report. Codebase Q&A uses the local SQLite retrieval index created during repository, folder, or ZIP analysis. It retrieves a small set of relevant source chunks and sends only those excerpts, plus the question, to Ollama; it does not send the entire repository for each question.
 
-The retrieval index uses SQLite FTS5/BM25 when available, with a simple local text-search fallback. It is keyword-based rather than semantic vector search and does not require an additional embedding model. Use **Clear index** in the Q&A panel to delete the current project's stored chunks.
+The retrieval index always supports keyword search with SQLite FTS5/BM25, with a `LIKE`-based fallback when FTS5 is unavailable. When the embedding model is installed, CodeMap also stores a local vector for each chunk and combines keyword and vector rankings with reciprocal-rank fusion. Install the embedding model once with `ollama pull nomic-embed-text`. Without it, Q&A still works with keyword search, and the response reports `retrieval_mode: keyword`. Use **Clear index** in the Q&A panel to delete the current project's stored chunks and embeddings.

@@ -1,13 +1,12 @@
 {
   "name": "codemap-frontend",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint .",
-    "dev:clean": "node -e \"require('node:fs').rmSync('.next', { recursive: true, force: true })\" && next dev"
+    "lint": "eslint ."
   },
   "dependencies": {
     "next": "^15.0.0",

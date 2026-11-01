@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import uuid
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
@@ -44,6 +45,7 @@ class FolderFile(BaseModel):
 
 class FolderAnalyzeRequest(BaseModel):
     folder_name: str = Field(default="Local project", min_length=1, max_length=160)
+    project_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     files: list[FolderFile] = Field(min_length=1, max_length=MAX_ANALYZED_FILES)
 
 
@@ -98,19 +100,21 @@ async def analyze_github(request: AnalyzeRequest, background_tasks: BackgroundTa
                 total_source_bytes += source_size
 
     project_id = make_stable_project_id(inventory["repository"], inventory["default_branch"])
-    index_update = index_project_sources_incremental(
-        project_id, sources,
+    index_update = await asyncio.to_thread(
+        index_project_sources_incremental,
+        project_id,
+        sources,
         prune_missing=(not inventory.get("tree_truncated", False) and len(sources) == inventory["file_count"]),
     )
     indexed_chunks = index_update["indexed_chunks"]
-    embedding_job = create_embedding_job(project_id)
+    embedding_job = await asyncio.to_thread(create_embedding_job, project_id)
     if embedding_job["created"]:
         background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
-    indexed_embeddings = count_project_embeddings(project_id)
-    graph = analyze_sources_incremental(project_id, sources)
-    bug_report = scan_for_bugs_incremental(project_id, sources)
-    symbols = symbol_intelligence(sources)
-    advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
+    indexed_embeddings = await asyncio.to_thread(count_project_embeddings, project_id)
+    graph = await asyncio.to_thread(analyze_sources_incremental, project_id, sources)
+    bug_report = await asyncio.to_thread(scan_for_bugs_incremental, project_id, sources)
+    symbols = await asyncio.to_thread(symbol_intelligence, sources)
+    advanced_architecture = await asyncio.to_thread(advanced_architecture_intelligence, sources, graph["nodes"], graph["edges"])
     return {
         "project_id": project_id,
         "indexed_chunks": indexed_chunks,
@@ -122,10 +126,10 @@ async def analyze_github(request: AnalyzeRequest, background_tasks: BackgroundTa
         "default_branch": inventory["default_branch"],
         **graph,
         "symbol_intelligence": symbols,
-        "architecture_insights": architecture_insights(graph["nodes"], graph["edges"]),
+        "architecture_insights": await asyncio.to_thread(architecture_insights, graph["nodes"], graph["edges"]),
         "advanced_architecture": advanced_architecture,
-        "code_intelligence": code_intelligence(graph["nodes"], graph["edges"]),
-        "architecture_health": architecture_health(graph["nodes"], graph["edges"], bug_report["findings"]),
+        "code_intelligence": await asyncio.to_thread(code_intelligence, graph["nodes"], graph["edges"]),
+        "architecture_health": await asyncio.to_thread(architecture_health, graph["nodes"], graph["edges"], bug_report["findings"]),
         "bug_findings": bug_report["findings"],
         "bug_stats": bug_report["stats"],
         "bug_analysis_note": bug_report["note"],
@@ -166,17 +170,19 @@ async def analyze_local_folder(request: FolderAnalyzeRequest, background_tasks: 
     if not sources:
         raise HTTPException(status_code=400, detail="No supported source files were found in this folder.")
 
-    project_id = make_stable_project_id(request.folder_name, "Local folder")
-    index_update = index_project_sources_incremental(project_id, sources, prune_missing=True)
+    # Browser folder pickers do not expose absolute paths. Use an opaque ID so
+    # different folders with the same display name never share an index.
+    project_id = request.project_id or uuid.uuid4().hex
+    index_update = await asyncio.to_thread(index_project_sources_incremental, project_id, sources, prune_missing=True)
     indexed_chunks = index_update["indexed_chunks"]
-    embedding_job = create_embedding_job(project_id)
+    embedding_job = await asyncio.to_thread(create_embedding_job, project_id)
     if embedding_job["created"]:
         background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
-    indexed_embeddings = count_project_embeddings(project_id)
-    graph = analyze_sources_incremental(project_id, sources)
-    bug_report = scan_for_bugs_incremental(project_id, sources)
-    symbols = symbol_intelligence(sources)
-    advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
+    indexed_embeddings = await asyncio.to_thread(count_project_embeddings, project_id)
+    graph = await asyncio.to_thread(analyze_sources_incremental, project_id, sources)
+    bug_report = await asyncio.to_thread(scan_for_bugs_incremental, project_id, sources)
+    symbols = await asyncio.to_thread(symbol_intelligence, sources)
+    advanced_architecture = await asyncio.to_thread(advanced_architecture_intelligence, sources, graph["nodes"], graph["edges"])
     return {
         "project_id": project_id,
         "indexed_chunks": indexed_chunks,
@@ -219,18 +225,21 @@ async def analyze_zip_upload(background_tasks: BackgroundTasks, file: UploadFile
         archive = read_zip_sources(data)
         sources = archive["sources"]
         project_id = make_stable_project_id(file.filename[:-4] or "Uploaded ZIP", "ZIP archive")
-        index_update = index_project_sources_incremental(
-            project_id, sources, prune_missing=(archive["files_skipped_by_limit"] == 0),
+        index_update = await asyncio.to_thread(
+            index_project_sources_incremental,
+            project_id,
+            sources,
+            prune_missing=(archive["files_skipped_by_limit"] == 0),
         )
         indexed_chunks = index_update["indexed_chunks"]
-        embedding_job = create_embedding_job(project_id)
+        embedding_job = await asyncio.to_thread(create_embedding_job, project_id)
         if embedding_job["created"]:
             background_tasks.add_task(run_embedding_job, embedding_job["job_id"], project_id)
-        indexed_embeddings = count_project_embeddings(project_id)
-        graph = analyze_sources_incremental(project_id, sources)
-        bug_report = scan_for_bugs_incremental(project_id, sources)
-        symbols = symbol_intelligence(sources)
-        advanced_architecture = advanced_architecture_intelligence(sources, graph["nodes"], graph["edges"])
+        indexed_embeddings = await asyncio.to_thread(count_project_embeddings, project_id)
+        graph = await asyncio.to_thread(analyze_sources_incremental, project_id, sources)
+        bug_report = await asyncio.to_thread(scan_for_bugs_incremental, project_id, sources)
+        symbols = await asyncio.to_thread(symbol_intelligence, sources)
+        advanced_architecture = await asyncio.to_thread(advanced_architecture_intelligence, sources, graph["nodes"], graph["edges"])
         return {
             "project_id": project_id,
             "indexed_chunks": indexed_chunks,

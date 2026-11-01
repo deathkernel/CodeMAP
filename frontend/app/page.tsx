@@ -11,220 +11,17 @@ import ReactFlow, {
   type Node,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import type { AnalysisResult } from "@/lib/types";
+import { API_BASE } from "@/lib/config";
+import { buildFileTree, hasTreeMatch, type FileTreeItem } from "@/lib/file-tree";
+import { getFileIcon } from "@/lib/file-icons";
+import { getFolderGroup, getGraphPositions, getLanguageStyle, toMermaid } from "@/lib/graph";
+import { Feature, Metric } from "@/components/ui";
 import {
-  ArrowRight, Boxes, Bug, ChevronDown, ChevronRight, Code2, FileCode2,
-  FileArchive, FileJson, FileText, Folder, FolderOpen, Github, LoaderCircle,
+  ArrowRight, Boxes, Bug, ChevronDown, ChevronRight, FileCode2,
+  FileArchive, Folder, FolderOpen, Github, LoaderCircle,
   Network, Search, ShieldCheck, Sparkles, Workflow,
 } from "lucide-react";
-
-type AnalysisResult = {
-  project_id: string;
-  indexed_chunks: number;
-  repository: string;
-  default_branch: string;
-  nodes: Array<{ id: string; label: string; path: string; language: string; lines: number }>;
-  edges: Array<{ id: string; source: string; target: string; label: string }>;
-  stats: {
-    files_analyzed: number;
-    dependencies_found: number;
-    relative_imports_unresolved: number;
-    files_not_fetched: number;
-  };
-  analysis_note: string;
-  bug_findings: Array<{ id: string; path: string; line: number; rule_id: string; title: string; severity: "high" | "medium" | "low"; message: string; recommendation: string }>;
-  bug_stats: { total: number; by_severity: { high: number; medium: number; low: number }; files_scanned: number; truncated: boolean };
-  bug_analysis_note: string;
-  code_intelligence: {
-    bottleneck_files: Array<{ path: string; fan_in: number; fan_out: number; connections: number }>;
-    unreferenced_files: Array<{ path: string; reason: string }>;
-    dependency_depth: { max_depth: number; reachable_files: number; unreachable_files: number; deepest_files: string[] };
-    code_intelligence_note: string;
-  };
-  symbol_intelligence: {
-    symbols: Array<{ id: string; path: string; name: string; qualified_name: string; kind: "function" | "class"; line: number; end_line: number }>;
-    call_edges: Array<{ id: string; source_path: string; target_path: string; caller: string; callee: string; line: number; target_line: number }>;
-    inheritance_edges: Array<{ path: string; child: string; parent: string; line: number; resolved: boolean }>;
-    dead_function_candidates: Array<{ id: string; path: string; name: string; qualified_name: string; line: number }>;
-    duplicate_function_groups: Array<Array<{ path: string; name: string; line: number }>>;
-    symbol_stats: { symbols: number; functions: number; classes: number; resolved_call_links: number; inheritance_links: number; dead_function_candidates: number; duplicate_function_groups: number };
-    symbol_note: string;
-  };
-  advanced_architecture: {
-    frameworks: string[];
-    entry_points: Array<{ path: string; framework: string; reason: string }>;
-    api_endpoints: Array<{ path: string; line: number; method: string; route: string; framework: string }>;
-    database_relations: Array<{ path: string; line: number; source_model: string; target: string; kind: string }>;
-    module_dependencies: Array<{ source: string; target: string; imports: number }>;
-    stats: { frameworks_detected: number; entry_points: number; api_endpoints: number; database_relations: number; cross_module_links: number };
-    note: string;
-  };
-  architecture_insights: {
-    entry_points: Array<{ path: string; reason: string }>;
-    circular_dependencies: string[][];
-    module_groups: Array<{ name: string; files: number }>;
-    architecture_stats: { entry_points: number; circular_dependency_groups: number; top_level_modules: number };
-    architecture_note: string;
-  };
-  architecture_health: {
-    health_score: number;
-    health_grade: "healthy" | "watch" | "needs_attention";
-    risk_factors: string[];
-    module_health: Array<{
-      name: string; files: number; lines: number; dependencies: number;
-      internal_dependencies: number; external_dependencies: number; circular_files: number;
-      bug_counts: { high: number; medium: number; low: number };
-      complexity_score: number; risk_score: number; risk_level: "high" | "medium" | "low";
-    }>;
-    health_stats: { modules: number; high_risk_modules: number; medium_risk_modules: number; circular_files: number; bug_findings: number };
-    health_note: string;
-  };
-};
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-function toMermaid(nodes: AnalysisResult["nodes"], edges: AnalysisResult["edges"]) {
-  const lines = ["flowchart LR"];
-  const ids = new Map(nodes.map((node, index) => [node.id, `F${index}`]));
-  const folders = [...new Set(nodes.map((node) => getFolderGroup(node.path)))].sort();
-
-  folders.forEach((folder, folderIndex) => {
-    const folderId = `GROUP_${folderIndex}`;
-    lines.push(`  subgraph ${folderId}["${folder.replaceAll('"', "'")}"]`);
-    nodes.filter((node) => getFolderGroup(node.path) === folder).forEach((node) => {
-      const id = ids.get(node.id);
-      if (id) lines.push(`    ${id}["${node.path.replaceAll('"', "'").replaceAll("\n", " ")}"]`);
-    });
-    lines.push("  end");
-  });
-
-  edges.forEach((edge) => {
-    const from = ids.get(edge.source);
-    const to = ids.get(edge.target);
-    if (from && to) lines.push(`  ${from} --> ${to}`);
-  });
-  return lines.join("\n");
-}
-
-type FileTreeItem = { name: string; path: string; isFolder: boolean; children: FileTreeItem[] };
-
-function buildFileTree(nodes: AnalysisResult["nodes"]): FileTreeItem[] {
-  const root: FileTreeItem = { name: "", path: "", isFolder: true, children: [] };
-  for (const file of nodes) {
-    const parts = file.path.split("/").filter(Boolean);
-    let current = root;
-    let currentPath = "";
-    parts.forEach((part, index) => {
-      currentPath = currentPath ? currentPath + "/" + part : part;
-      const isFolder = index < parts.length - 1;
-      let item = current.children.find((child) => child.name === part);
-      if (!item) {
-        item = { name: part, path: currentPath, isFolder, children: [] };
-        current.children.push(item);
-      }
-      current = item;
-    });
-  }
-  const sortItems = (items: FileTreeItem[]) => {
-    items.sort((a, b) => a.isFolder !== b.isFolder ? (a.isFolder ? -1 : 1) : a.name.localeCompare(b.name));
-    items.forEach((item) => sortItems(item.children));
-  };
-  sortItems(root.children);
-  return root.children;
-}
-
-function hasTreeMatch(item: FileTreeItem, query: string): boolean {
-  if (!query || item.path.toLowerCase().includes(query.toLowerCase())) return true;
-  return item.children.some((child) => hasTreeMatch(child, query));
-}
-
-function getFileIcon(path: string) {
-  const extension = path.split(".").pop()?.toLowerCase();
-  if (["json", "jsonc"].includes(extension || "")) return FileJson;
-  if (["md", "txt", "mdx"].includes(extension || "")) return FileText;
-  if (["py", "js", "jsx", "ts", "tsx", "java", "go", "rs", "cpp", "c", "cs"].includes(extension || "")) return Code2;
-  return FileCode2;
-}
-
-function getFolderGroup(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  return parts.length > 1 ? parts[0] : "(root)";
-}
-
-function getLanguageStyle(language: string) {
-  const styles: Record<string, { border: string; background: string; text: string }> = {
-    py: { border: "#3b82f6", background: "#102039", text: "#93c5fd" },
-    ts: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
-    tsx: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
-    js: { border: "#eab308", background: "#29230e", text: "#fde047" },
-    jsx: { border: "#eab308", background: "#29230e", text: "#fde047" },
-    json: { border: "#a78bfa", background: "#211a35", text: "#c4b5fd" },
-    css: { border: "#ec4899", background: "#301629", text: "#f9a8d4" },
-    html: { border: "#f97316", background: "#301d12", text: "#fdba74" },
-  };
-  return styles[language.toLowerCase()] || { border: "#64748b", background: "#172033", text: "#cbd5e1" };
-}
-
-function getGraphPositions(result: AnalysisResult) {
-  const folders = [...new Set(result.nodes.map((node) => getFolderGroup(node.path)))].sort();
-  const outgoing = new Map<string, string[]>();
-  const indegree = new Map<string, number>();
-  const rank = new Map<string, number>();
-  const degree = new Map<string, number>();
-
-  result.nodes.forEach((node) => {
-    outgoing.set(node.id, []);
-    indegree.set(node.id, 0);
-    rank.set(node.id, 0);
-    degree.set(node.id, 0);
-  });
-  result.edges.forEach((edge) => {
-    if (!outgoing.has(edge.source) || !indegree.has(edge.target)) return;
-    outgoing.get(edge.source)?.push(edge.target);
-    indegree.set(edge.target, (indegree.get(edge.target) || 0) + 1);
-    degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
-    degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
-  });
-
-  const queue = result.nodes
-    .filter((node) => indegree.get(node.id) === 0)
-    .map((node) => node.id)
-    .sort();
-  let cursor = 0;
-  while (cursor < queue.length) {
-    const current = queue[cursor++];
-    for (const target of outgoing.get(current) || []) {
-      rank.set(target, Math.max(rank.get(target) || 0, (rank.get(current) || 0) + 1));
-      const remaining = (indegree.get(target) || 0) - 1;
-      indegree.set(target, remaining);
-      if (remaining === 0) queue.push(target);
-    }
-  }
-
-  const unresolved = result.nodes.filter((node) => (indegree.get(node.id) || 0) > 0);
-  const nextRank = Math.max(0, ...rank.values()) + 1;
-  unresolved.forEach((node) => rank.set(node.id, nextRank));
-
-  const positions = new Map<string, { x: number; y: number }>();
-  const columns = new Map<number, typeof result.nodes>();
-
-  result.nodes.forEach((node) => {
-    const column = rank.get(node.id) || 0;
-    columns.set(column, [...(columns.get(column) || []), node]);
-  });
-
-  columns.forEach((columnNodes, column) => {
-    columnNodes.sort((a, b) =>
-      getFolderGroup(a.path).localeCompare(getFolderGroup(b.path)) ||
-      (degree.get(b.id) || 0) - (degree.get(a.id) || 0) ||
-      a.path.localeCompare(b.path),
-    );
-    columnNodes.forEach((node, index) => {
-      positions.set(node.id, { x: column * 360, y: index * 190 });
-    });
-  });
-
-  return positions;
-}
 
 function Explorer() {
   const [url, setUrl] = useState("");
@@ -354,7 +151,7 @@ function Explorer() {
       const isImportant = graphMetrics.important.includes(node.id);
       const inPath = !selected || !highlightDependencies || graphMetrics.reachable.has(node.id);
       const languageStyle = getLanguageStyle(node.language);
-      const borderColor = selected === node.id ? "#a5b4fc" : disconnected ? "#fbbf24" : isImportant ? "#34d399" : languageStyle.border;
+      const borderColor = selected === node.id ? "#5eead4" : disconnected ? "#fb7185" : isImportant ? "#a3e635" : languageStyle.border;
       return {
         id: node.id,
         position: positions.get(node.id) || { x: 0, y: 0 },
@@ -376,9 +173,9 @@ function Explorer() {
       const active = !selected || !highlightDependencies || (graphMetrics.reachable.has(edge.source) && graphMetrics.reachable.has(edge.target));
       return {
         id: edge.id, source: edge.source, target: edge.target, label: "imports", animated: active,
-        style: { stroke: active ? "#818cf8" : "#334155", strokeWidth: active ? 1.8 : 1, opacity: active ? 1 : 0.15 },
-        labelStyle: { fill: "#a5b4fc", fontSize: 10 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: active ? "#818cf8" : "#334155", width: 16, height: 16 },
+        style: { stroke: active ? "#2dd4bf" : "#334155", strokeWidth: active ? 1.8 : 1, opacity: active ? 1 : 0.15 },
+        labelStyle: { fill: "#99f6e4", fontSize: 10 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: active ? "#2dd4bf" : "#334155", width: 16, height: 16 },
       };
     }) ?? [],
     [result, graphMetrics, selected, highlightDependencies],
@@ -780,10 +577,11 @@ function Explorer() {
 
       if (!payloadFiles.length) throw new Error("No supported source files found within the size limits.");
       const folderName = (selectedFiles[0].webkitRelativePath || selectedFiles[0].name).split("/")[0];
+      const projectId = crypto.randomUUID().replaceAll("-", "");
       const response = await fetch(`${API_BASE}/api/repository/analyze-folder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder_name: folderName, files: payloadFiles }),
+        body: JSON.stringify({ folder_name: folderName, project_id: projectId, files: payloadFiles }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Folder analysis failed.");
@@ -1109,9 +907,9 @@ function Explorer() {
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
               <div className="h-[620px]">
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView fitViewOptions={{ padding: 0.2, minZoom: 0.2, maxZoom: 1.25 }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
-                  <Background color="#334155" gap={24} />
-                  <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.25} maxZoom={1.5}>
+                  <Background color="#24434a" gap={28} />
+                  <MiniMap nodeColor={(node) => String(node.style?.borderColor || "#2dd4bf")} maskColor="rgba(5,12,18,0.78)" />
                   <Controls />
                 </ReactFlow>
               </div>
@@ -1537,14 +1335,6 @@ function Explorer() {
       <footer className="mx-auto max-w-[1500px] border-t border-white/10 py-5 text-center text-xs text-slate-600">CodeMap · Your code stays yours · Early development</footer>
     </main>
   );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-xl bg-black/20 p-3"><div className="text-2xl font-semibold tabular-nums">{value}</div><div className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">{label}</div></div>;
-}
-
-function Feature({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
-  return <article className="rounded-2xl border border-white/10 bg-white/[0.025] p-5"><div className="mb-4 inline-flex rounded-xl bg-indigo-500/10 p-2.5 text-indigo-300">{icon}</div><h2 className="font-medium">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-400">{text}</p></article>;
 }
 
 export default function Home() {
