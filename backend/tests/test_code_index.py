@@ -1,4 +1,4 @@
-from app.services.code_index import delete_project_index, index_project_sources, make_project_id, search_project_sources
+from app.services.code_index import count_project_chunks, delete_project_index, index_project_sources, index_project_sources_incremental, make_project_id, search_project_sources
 
 
 def test_project_index_chunks_and_retrieves_relevant_source(tmp_path, monkeypatch) -> None:
@@ -53,3 +53,18 @@ def test_project_id_changes_when_same_named_project_has_different_code() -> None
     first = make_project_id("demo", "Local folder", {"src/main.py": "print('first')"})
     second = make_project_id("demo", "Local folder", {"src/main.py": "print('second')"})
     assert first != second
+
+
+
+def test_incremental_reanalysis_reports_existing_chunk_total(tmp_path, monkeypatch) -> None:
+    database = tmp_path / "codemap-index.db"
+    monkeypatch.setenv("CODEMAP_DATABASE_URL", f"sqlite:///{database.as_posix()}")
+    project_id = make_project_id("repeat-demo", "main", {"app.py": "def run():\n    return True\n"})
+    sources = {"app.py": "def run():\n    return True\n"}
+
+    first = index_project_sources_incremental(project_id, sources)
+    second = index_project_sources_incremental(project_id, sources)
+
+    assert first["indexed_chunks"] > 0
+    assert second["indexed_chunks"] == 0
+    assert count_project_chunks(project_id) == first["indexed_chunks"]
