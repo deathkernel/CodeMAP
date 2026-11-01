@@ -25,9 +25,17 @@ def _python_imports(source: str) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             imports.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            prefix = "." * node.level + node.module
-            if node.names and node.names[0].name != "*":
+        elif isinstance(node, ast.ImportFrom):
+            prefix = "." * node.level + (node.module or "")
+            if node.module is None:
+                imports.extend(
+                    f"{prefix}{alias.name}"
+                    for alias in node.names
+                    if alias.name != "*"
+                )
+                if not node.names or all(alias.name == "*" for alias in node.names):
+                    imports.append(prefix)
+            elif node.names and node.names[0].name != "*":
                 imports.extend(f"{prefix}.{alias.name}" for alias in node.names)
             else:
                 imports.append(prefix)
