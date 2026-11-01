@@ -9,7 +9,8 @@ CodeMap sends code explanations only to the Ollama endpoint configured for the b
 ```env
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=hf.co/bartowski/Qwen_Qwen3.5-9B-GGUF:Q6_K
-OLLAMA_REQUEST_TIMEOUT_SECONDS=240
+OLLAMA_REQUEST_TIMEOUT_SECONDS=600
+OLLAMA_NUM_PREDICT=512
 ```
 
 4. Start CodeMap. Open a repository, select a file, then choose **Explain with Ollama**.
