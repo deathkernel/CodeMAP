@@ -1174,6 +1174,7 @@ function Explorer() {
                 )}
               </div>
             </section>
+            </div>
             <aside className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Workflow size={16} className="text-indigo-300" /> Analysis overview</div>
