@@ -16,8 +16,8 @@ def test_python_absolute_import_creates_edge() -> None:
 
 def test_python_from_dot_import_module_creates_edge() -> None:
     result = analyze_sources({
-        "app/main.py": "from . import helpers\\n",
-        "app/helpers.py": "def run(): return True\\n",
+        "app/main.py": "from . import helpers\n",
+        "app/helpers.py": "def run(): return True\n",
     })
     assert len(result["edges"]) == 1
     assert result["edges"][0]["target"] == "app/helpers.py"
