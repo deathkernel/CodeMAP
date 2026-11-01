@@ -1014,8 +1014,8 @@ function Explorer() {
   const selectedNode = result?.nodes.find((node) => node.id === selected);
 
   return (
-    <main className="min-h-screen px-5 py-6 md:px-10">
-      <header className="mx-auto flex max-w-[1500px] items-center justify-between border-b border-white/10 pb-5">
+    <main className="min-h-screen w-full px-4 py-5 md:px-6 2xl:px-10">
+      <header className="mx-auto flex w-full max-w-[1800px] items-center justify-between border-b border-white/10 pb-5">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-indigo-500/15 p-2.5 text-indigo-300"><Boxes size={22} /></div>
           <div><div className="text-lg font-bold tracking-tight">CodeMap</div><div className="text-[10px] tracking-[0.2em] text-slate-500">CODEBASE INTELLIGENCE</div></div>
@@ -1031,8 +1031,8 @@ function Explorer() {
         }</div>
       </header>
 
-      <section className="mx-auto max-w-[1500px] py-10">
-        <div className="mb-8 max-w-3xl">
+      <section className="mx-auto w-full max-w-[1800px] py-7 lg:py-8">
+        <div className="mb-6 max-w-5xl">
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-indigo-300"><Sparkles size={14} /> See how your code connects</div>
           <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Every file has a place.<br /><span className="text-indigo-300">See the whole system.</span></h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">Map repository dependencies, navigate source files, and uncover the structure behind your project. Your AI stays local with Ollama.</p>
@@ -1060,7 +1060,7 @@ function Explorer() {
         {error && <p role="alert" className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-300">{error}</p>}
 
         {result ? (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_290px]">
+          <div className="mt-5 grid w-full grid-cols-1 gap-4">
             <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
                 <div><div className="font-semibold">{result.repository}</div><div className="mt-1 text-xs text-slate-500">Branch: {result.default_branch}</div></div>
@@ -1139,7 +1139,7 @@ function Explorer() {
                 )}
               </div>
             </section>
-            <aside className="space-y-4">
+            <aside className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Workflow size={16} className="text-indigo-300" /> Analysis overview</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1528,7 +1528,7 @@ function Explorer() {
                   {fileTree.length ? renderTree(fileTree) : <p className="p-3 text-xs text-slate-500">No files to display.</p>}
                 </div>
               </div>
-              {selectedNode && <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/5 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><FileCode2 size={15} /> Selected file</div><div className="break-all text-xs text-indigo-200">{selectedNode.path}</div><div className="mt-2 text-xs text-slate-400">{selectedNode.language} · {selectedNode.lines} lines</div><div className="mt-3 flex gap-2">
+              {selectedNode && <div className="col-span-full rounded-2xl border border-indigo-400/20 bg-indigo-400/5 p-4"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><FileCode2 size={15} /> Selected file</div><div className="break-all text-xs text-indigo-200">{selectedNode.path}</div><div className="mt-2 text-xs text-slate-400">{selectedNode.language} · {selectedNode.lines} lines</div><div className="mt-3 flex gap-2">
                   <button onClick={() => void openSource(selectedNode.path)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">Open source</button>
                   <button disabled={!source || aiLoading} onClick={() => void explainSource()} className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{aiLoading ? "Thinking..." : "Explain with Ollama"}</button>
                 </div>
@@ -1546,7 +1546,7 @@ function Explorer() {
                 {aiError && <p role="alert" className="mt-3 text-xs text-rose-300">{aiError}</p>}
                 {explanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-6 text-slate-300">{explanation}</div>}
               </div>}
-              <p className="text-[11px] leading-5 text-slate-600">{result.analysis_note}</p>
+              <p className="col-span-full text-[11px] leading-5 text-slate-600">{result.analysis_note}</p>
             </aside>
           </div>
         ) : (
