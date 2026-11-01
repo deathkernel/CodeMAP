@@ -556,8 +556,15 @@ async def run_embedding_job(job_id: str, project_id: str) -> None:
 
     try:
         result_count = await index_project_embeddings(project_id)
-        status = "completed"
-        error = None
+        if result_count > 0:
+            status = "completed"
+            error = None
+        else:
+            status = "skipped"
+            error = (
+                "No embeddings were created. Check that the source index contains chunks "
+                "and that the configured Ollama embedding model is installed and available."
+            )
     except Exception:
         result_count = 0
         status = "failed"
