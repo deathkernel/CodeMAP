@@ -42,7 +42,7 @@ def _resolve_import(source_path: str, imported: str, known_paths: set[str], pyth
     candidates: list[str] = []
     if imported.startswith("."):
         level = len(imported) - len(imported.lstrip("."))
-        module_path = imported[level:].replace(".", "/")
+        module_path = imported[level:].lstrip("/").replace(".", "/")
         base = PurePosixPath(source_path).parent
         for _ in range(max(0, level - 1)):
             base = base.parent
