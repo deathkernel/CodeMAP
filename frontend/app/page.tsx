@@ -218,8 +218,17 @@ function getGraphPositions(result: AnalysisResult) {
       (degree.get(b.id) || 0) - (degree.get(a.id) || 0) ||
       a.path.localeCompare(b.path),
     );
+
+    // Wrap large rank columns into compact sub-columns instead of placing
+    // hundreds of files in one tall strip. This is especially important when
+    // a repository has no locally-resolved imports.
     columnNodes.forEach((node, index) => {
-      positions.set(node.id, { x: column * 360, y: index * 190 });
+      const subColumn = Math.floor(index / 7);
+      const row = index % 7;
+      positions.set(node.id, {
+        x: column * 520 + subColumn * 250,
+        y: row * 170,
+      });
     });
   });
 
@@ -1108,12 +1117,26 @@ function Explorer() {
                 <button onClick={() => setHighlightDependencies((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (highlightDependencies ? "border-indigo-400/30 bg-indigo-500/10 text-indigo-200" : "border-white/10 text-slate-400")}>{highlightDependencies ? "Dependency path: on" : "Dependency path: off"}</button>
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
-              <div className="h-[620px]">
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView fitViewOptions={{ padding: 0.2, minZoom: 0.2, maxZoom: 1.25 }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
+              <div className="relative h-[720px]">
+                {result.edges.length === 0 && (
+                  <div className="absolute left-4 right-4 top-4 z-10 rounded-xl border border-amber-400/20 bg-slate-950/90 px-4 py-3 text-xs text-amber-100 shadow-lg">
+                    No local import connections were resolved. Files are arranged in an overview grid so the canvas remains explorable.
+                    <span className="ml-2 text-amber-200/70">Check import aliases and analyzed source paths for deeper dependency links.</span>
+                  </div>
+                )}
+                {visibleGraphNodes.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-slate-400">
+                    <Network size={28} className="text-cyan-300" />
+                    <p className="text-sm font-semibold text-slate-200">No files in this view</p>
+                    <p className="max-w-sm text-xs">Change the folder filter or turn off disconnected-only mode to see the analyzed files.</p>
+                  </div>
+                ) : (
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView fitViewOptions={{ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 }} onInit={(instance) => { window.requestAnimationFrame(() => instance.fitView({ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 })); }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.04}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
                 </ReactFlow>
+                )}
               </div>
             </section>
             <aside className="space-y-4">
