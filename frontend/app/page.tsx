@@ -82,6 +82,9 @@ type AnalysisResult = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const EMPTY_NODE_TYPES = {};
+const EMPTY_EDGE_TYPES = {};
+
 function toMermaid(nodes: AnalysisResult["nodes"], edges: AnalysisResult["edges"]) {
   const lines = ["flowchart LR"];
   const ids = new Map(nodes.map((node, index) => [node.id, `F${index}`]));
@@ -1222,7 +1225,7 @@ function Explorer() {
                     <p className="max-w-sm text-xs">Change the folder filter or turn off disconnected-only mode to see the analyzed files.</p>
                   </div>
                 ) : (
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView fitViewOptions={{ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 }} onInit={(instance) => { window.requestAnimationFrame(() => instance.fitView({ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 })); }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.04}>
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} nodeTypes={EMPTY_NODE_TYPES} edgeTypes={EMPTY_EDGE_TYPES} fitView fitViewOptions={{ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 }} onInit={(instance) => { window.requestAnimationFrame(() => instance.fitView({ padding: 0.16, minZoom: 0.04, maxZoom: 1.1 })); }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.04}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
