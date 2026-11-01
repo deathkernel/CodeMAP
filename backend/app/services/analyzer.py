@@ -49,7 +49,7 @@ def _js_imports(source: str) -> list[str]:
 def _resolve_import(source_path: str, imported: str, known_paths: set[str], python: bool = False) -> str | None:
     if imported.startswith("."):
         relative_level = len(imported) - len(imported.lstrip("."))
-        module_path = imported[relative_level:].replace(".", "/")
+        module_path = imported[relative_level:].lstrip("/").replace(".", "/")
         parts = list(PurePosixPath(source_path).parent.parts)
         for _ in range(max(0, relative_level - 1)):
             if parts:
