@@ -205,26 +205,22 @@ function getGraphPositions(result: AnalysisResult) {
   unresolved.forEach((node) => rank.set(node.id, nextRank));
 
   const positions = new Map<string, { x: number; y: number }>();
-  let folderTop = 0;
-  folders.forEach((folder) => {
-    const files = result.nodes.filter((node) => getFolderGroup(node.path) === folder);
-    const columns = new Map<number, typeof files>();
-    files.forEach((node) => {
-      const column = rank.get(node.id) || 0;
-      columns.set(column, [...(columns.get(column) || []), node]);
-    });
+  const columns = new Map<number, typeof result.nodes>();
 
-    let folderRows = 1;
-    columns.forEach((columnFiles, column) => {
-      columnFiles.sort((a, b) =>
-        (degree.get(b.id) || 0) - (degree.get(a.id) || 0) || a.path.localeCompare(b.path),
-      );
-      folderRows = Math.max(folderRows, columnFiles.length);
-      columnFiles.forEach((node, index) => {
-        positions.set(node.id, { x: column * 360, y: folderTop + index * 170 });
-      });
+  result.nodes.forEach((node) => {
+    const column = rank.get(node.id) || 0;
+    columns.set(column, [...(columns.get(column) || []), node]);
+  });
+
+  columns.forEach((columnNodes, column) => {
+    columnNodes.sort((a, b) =>
+      getFolderGroup(a.path).localeCompare(getFolderGroup(b.path)) ||
+      (degree.get(b.id) || 0) - (degree.get(a.id) || 0) ||
+      a.path.localeCompare(b.path),
+    );
+    columnNodes.forEach((node, index) => {
+      positions.set(node.id, { x: column * 360, y: index * 190 });
     });
-    folderTop += folderRows * 170 + 110;
   });
 
   return positions;
@@ -1113,7 +1109,7 @@ function Explorer() {
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
               <div className="h-[620px]">
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView fitViewOptions={{ padding: 0.2, minZoom: 0.2, maxZoom: 1.25 }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
