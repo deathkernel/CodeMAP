@@ -151,7 +151,7 @@ function Explorer() {
       const isImportant = graphMetrics.important.includes(node.id);
       const inPath = !selected || !highlightDependencies || graphMetrics.reachable.has(node.id);
       const languageStyle = getLanguageStyle(node.language);
-      const borderColor = selected === node.id ? "#a5b4fc" : disconnected ? "#fbbf24" : isImportant ? "#34d399" : languageStyle.border;
+      const borderColor = selected === node.id ? "#5eead4" : disconnected ? "#fb7185" : isImportant ? "#a3e635" : languageStyle.border;
       return {
         id: node.id,
         position: positions.get(node.id) || { x: 0, y: 0 },
@@ -173,9 +173,9 @@ function Explorer() {
       const active = !selected || !highlightDependencies || (graphMetrics.reachable.has(edge.source) && graphMetrics.reachable.has(edge.target));
       return {
         id: edge.id, source: edge.source, target: edge.target, label: "imports", animated: active,
-        style: { stroke: active ? "#818cf8" : "#334155", strokeWidth: active ? 1.8 : 1, opacity: active ? 1 : 0.15 },
-        labelStyle: { fill: "#a5b4fc", fontSize: 10 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: active ? "#818cf8" : "#334155", width: 16, height: 16 },
+        style: { stroke: active ? "#2dd4bf" : "#334155", strokeWidth: active ? 1.8 : 1, opacity: active ? 1 : 0.15 },
+        labelStyle: { fill: "#99f6e4", fontSize: 10 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: active ? "#2dd4bf" : "#334155", width: 16, height: 16 },
       };
     }) ?? [],
     [result, graphMetrics, selected, highlightDependencies],
@@ -907,9 +907,9 @@ function Explorer() {
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
               <div className="h-[620px]">
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
-                  <Background color="#334155" gap={24} />
-                  <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView={{ padding: 0.18, minZoom: 0.35, maxZoom: 1.25 }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.25} maxZoom={1.5}>
+                  <Background color="#24434a" gap={28} />
+                  <MiniMap nodeColor={(node) => String(node.style?.borderColor || "#2dd4bf")} maskColor="rgba(5,12,18,0.78)" />
                   <Controls />
                 </ReactFlow>
               </div>
