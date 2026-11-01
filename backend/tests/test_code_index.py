@@ -1,3 +1,6 @@
+import asyncio
+
+from app.services import code_index
 from app.services.code_index import delete_project_index, index_project_sources, make_project_id, search_project_sources
 
 
@@ -53,3 +56,23 @@ def test_project_id_changes_when_same_named_project_has_different_code() -> None
     first = make_project_id("demo", "Local folder", {"src/main.py": "print('first')"})
     second = make_project_id("demo", "Local folder", {"src/main.py": "print('second')"})
     assert first != second
+
+
+
+def test_embedding_job_does_not_report_completed_when_no_vectors_are_created(tmp_path, monkeypatch) -> None:
+    database = tmp_path / "codemap-jobs.db"
+    monkeypatch.setenv("CODEMAP_DATABASE_URL", f"sqlite:///{database.as_posix()}")
+
+    async def no_embeddings(project_id: str) -> int:
+        return 0
+
+    monkeypatch.setattr(code_index, "index_project_embeddings", no_embeddings)
+    job = code_index.create_embedding_job("empty-project")
+
+    asyncio.run(code_index.run_embedding_job(job["job_id"], "empty-project"))
+
+    result = code_index.get_index_job(job["job_id"])
+    assert result is not None
+    assert result["status"] == "skipped"
+    assert result["indexed_embeddings"] == 0
+    assert "Ollama embedding model" in result["error"]
