@@ -165,30 +165,27 @@ function getLanguageStyle(language: string) {
 }
 
 function getGraphPositions(result: AnalysisResult) {
-  const folders = [...new Set(result.nodes.map((node) => getFolderGroup(node.path)))].sort();
   const outgoing = new Map<string, string[]>();
   const indegree = new Map<string, number>();
   const rank = new Map<string, number>();
-  const degree = new Map<string, number>();
 
   result.nodes.forEach((node) => {
     outgoing.set(node.id, []);
     indegree.set(node.id, 0);
     rank.set(node.id, 0);
-    degree.set(node.id, 0);
   });
+
   result.edges.forEach((edge) => {
     if (!outgoing.has(edge.source) || !indegree.has(edge.target)) return;
     outgoing.get(edge.source)?.push(edge.target);
     indegree.set(edge.target, (indegree.get(edge.target) || 0) + 1);
-    degree.set(edge.source, (degree.get(edge.source) || 0) + 1);
-    degree.set(edge.target, (degree.get(edge.target) || 0) + 1);
   });
 
   const queue = result.nodes
     .filter((node) => indegree.get(node.id) === 0)
     .map((node) => node.id)
     .sort();
+
   let cursor = 0;
   while (cursor < queue.length) {
     const current = queue[cursor++];
@@ -200,31 +197,28 @@ function getGraphPositions(result: AnalysisResult) {
     }
   }
 
+  // Keep cyclic components visible without allowing them to distort the
+  // vertical layout of every folder in the repository.
   const unresolved = result.nodes.filter((node) => (indegree.get(node.id) || 0) > 0);
   const nextRank = Math.max(0, ...rank.values()) + 1;
   unresolved.forEach((node) => rank.set(node.id, nextRank));
 
+  const columns = new Map<number, typeof result.nodes>();
+  result.nodes.forEach((node) => {
+    const column = rank.get(node.id) || 0;
+    columns.set(column, [...(columns.get(column) || []), node]);
+  });
+
   const positions = new Map<string, { x: number; y: number }>();
-  let folderTop = 0;
-  folders.forEach((folder) => {
-    const files = result.nodes.filter((node) => getFolderGroup(node.path) === folder);
-    const columns = new Map<number, typeof files>();
-    files.forEach((node) => {
-      const column = rank.get(node.id) || 0;
-      columns.set(column, [...(columns.get(column) || []), node]);
+  columns.forEach((columnNodes, column) => {
+    columnNodes.sort((a, b) => {
+      const folderOrder = getFolderGroup(a.path).localeCompare(getFolderGroup(b.path));
+      return folderOrder || a.path.localeCompare(b.path);
     });
 
-    let folderRows = 1;
-    columns.forEach((columnFiles, column) => {
-      columnFiles.sort((a, b) =>
-        (degree.get(b.id) || 0) - (degree.get(a.id) || 0) || a.path.localeCompare(b.path),
-      );
-      folderRows = Math.max(folderRows, columnFiles.length);
-      columnFiles.forEach((node, index) => {
-        positions.set(node.id, { x: column * 360, y: folderTop + index * 170 });
-      });
+    columnNodes.forEach((node, index) => {
+      positions.set(node.id, { x: column * 360, y: index * 190 });
     });
-    folderTop += folderRows * 170 + 110;
   });
 
   return positions;
@@ -1113,7 +1107,7 @@ function Explorer() {
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
               <div className="h-[620px]">
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView fitViewOptions={{ padding: 0.2, minZoom: 0.2, maxZoom: 1.25 }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.15}>
                   <Background color="#334155" gap={24} />
                   <MiniMap nodeColor="#6366f1" maskColor="rgba(8,13,23,0.7)" />
                   <Controls />
