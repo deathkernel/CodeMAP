@@ -223,3 +223,66 @@ main > section > div.mt-5 > div.grid > section { min-height: 72vh; }
   main > section > div.mt-5 > div.grid > aside:first-child { max-height: 320px; min-height: 0; }
   main > section > div.mt-5 > div.grid > section { min-height: 540px; }
 }
+
+
+/* Clean graphite + jade theme */
+:root {
+  color-scheme: dark;
+  --page: #0b0f10;
+  --panel: #12191a;
+  --panel-raised: #192223;
+  --line: rgba(180, 199, 192, 0.13);
+  --text: #edf4f1;
+  --muted: #98aaa3;
+  --accent: #54c6a2;
+}
+body {
+  background:
+    radial-gradient(ellipse at 50% -24%, rgba(71, 145, 119, .10), transparent 42rem),
+    var(--page);
+}
+::selection { background: rgba(84,198,162,.28); color: #f4fffa; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline-color: rgba(84,198,162,.78);
+}
+main > header > div:first-child > div:first-child {
+  border-color: rgba(84,198,162,.22);
+  background: linear-gradient(145deg, rgba(84,198,162,.16), rgba(84,198,162,.035));
+  box-shadow: 0 8px 24px rgba(30,110,82,.09);
+}
+main > section > div:first-child h1 span {
+  color: #9ce4c8;
+  background: linear-gradient(100deg, #b5ead5 5%, #70c9a7 58%, #a8cfc0 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+main > section > div:first-child > div:first-child { color: #8bd8b8; }
+main > section > div:nth-of-type(2):has(form) {
+  border-color: rgba(180,199,192,.14);
+  background: linear-gradient(135deg, rgba(22,32,31,.98), rgba(15,23,23,.99));
+  box-shadow: 0 20px 60px rgba(0,0,0,.19), inset 0 1px rgba(255,255,255,.025);
+}
+main input:focus, main textarea:focus, main select:focus {
+  border-color: rgba(84,198,162,.48);
+  box-shadow: 0 0 0 3px rgba(84,198,162,.075);
+}
+main section section.rounded-2xl,
+main aside > div.rounded-2xl,
+main article.rounded-2xl {
+  background: linear-gradient(155deg, rgba(20,29,28,.98), rgba(15,22,22,.98));
+  border-color: rgba(180,199,192,.13);
+  box-shadow: 0 10px 30px rgba(0,0,0,.13), inset 0 1px rgba(255,255,255,.022);
+}
+main .bg-indigo-500:not(:disabled) {
+  background: linear-gradient(135deg, #36a982, #278967);
+  box-shadow: 0 6px 18px rgba(39,137,103,.18);
+}
+main .bg-indigo-500:not(:disabled):hover { background: linear-gradient(135deg, #48bd96, #319c77); }
+main aside > div.rounded-2xl button:hover { border-color: rgba(84,198,162,.28); }
+.react-flow { background: radial-gradient(circle at 50% 45%, rgba(57,111,91,.10), transparent 62%); }
+.react-flow__background pattern circle { fill: rgba(154,180,169,.15); }
+.react-flow__controls { background: #172120; border-color: rgba(180,199,192,.16); }
+.react-flow__controls-button { background: #172120; fill: #c9d8d1; border-bottom-color: rgba(180,199,192,.12); }
+.react-flow__controls-button:hover { background: #22312d; }
+.react-flow__minimap { background: rgba(17,27,25,.94); border-color: rgba(180,199,192,.15); }
+.analysis-grid > div.rounded-2xl { border-color: rgba(180,199,192,.13); }
