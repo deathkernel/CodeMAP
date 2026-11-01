@@ -577,10 +577,11 @@ function Explorer() {
 
       if (!payloadFiles.length) throw new Error("No supported source files found within the size limits.");
       const folderName = (selectedFiles[0].webkitRelativePath || selectedFiles[0].name).split("/")[0];
+      const projectId = crypto.randomUUID().replaceAll("-", "");
       const response = await fetch(`${API_BASE}/api/repository/analyze-folder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder_name: folderName, files: payloadFiles }),
+        body: JSON.stringify({ folder_name: folderName, project_id: projectId, files: payloadFiles }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Folder analysis failed.");
