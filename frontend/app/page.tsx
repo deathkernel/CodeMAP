@@ -348,7 +348,6 @@ function Explorer() {
         priority: "high",
         title: "Break a circular dependency",
         detail: cycle.join(" → "),
-        path: cycle[0],
       });
     });
     result.architecture_health.module_health
@@ -361,7 +360,6 @@ function Explorer() {
           priority: module.risk_level,
           title: `Reduce ${module.name} module risk`,
           detail: `${module.files} files · complexity ${module.complexity_score}/100 · risk ${module.risk_score}/100`,
-          path: module.name,
         });
       });
     result.symbol_intelligence.duplicate_function_groups.slice(0, 3).forEach((group, index) => {
@@ -1140,6 +1138,7 @@ function Explorer() {
             <nav className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-[#0b1220] p-2 text-xs">
               <a href="#architecture-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Architecture</a>
               <a href="#health-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Health & risk</a>
+              <a href="#improvement-roadmap" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Improvement plan</a>
               <a href="#bugs-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Bug scan</a>
               <a href="#symbols-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Symbols</a>
               <a href="#search-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Code search</a>
