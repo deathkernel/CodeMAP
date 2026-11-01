@@ -119,7 +119,7 @@ main .bg-indigo-500:not(:disabled) {
   box-shadow: 0 7px 20px rgba(91,111,238,.2);
 }
 main .bg-indigo-500:not(:disabled):hover { background: linear-gradient(135deg, #8798ff, #6c80f4); }
-main .bg-white\\/\\[0\\.025\\], main .bg-white\\/\\[0\\.035\\] {
+main .bg-white\/\[0\.025\], main .bg-white\/\[0\.035\] {
   background-color: rgba(17,26,39,.78);
 }
 .react-flow {
