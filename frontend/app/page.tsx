@@ -1175,7 +1175,7 @@ function Explorer() {
               </div>
             </section>
             </div>
-            <aside className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            <aside className="analysis-grid grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Workflow size={16} className="text-indigo-300" /> Analysis overview</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1400,7 +1400,7 @@ function Explorer() {
                 </div>
                 <p className="text-[10px] leading-4 text-slate-600">{result.architecture_health.health_note}</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+              <div id="code-intelligence-panel" className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
                 <div className="mb-4 flex items-center gap-2 text-sm font-semibold"><Network size={16} className="text-cyan-300" /> Code intelligence pro</div>
                 <div className="mb-4 grid grid-cols-3 gap-2">
                   <Metric label="Max depth" value={result.code_intelligence.dependency_depth.max_depth} />
