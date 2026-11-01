@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import uuid
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
@@ -44,6 +45,7 @@ class FolderFile(BaseModel):
 
 class FolderAnalyzeRequest(BaseModel):
     folder_name: str = Field(default="Local project", min_length=1, max_length=160)
+    project_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     files: list[FolderFile] = Field(min_length=1, max_length=MAX_ANALYZED_FILES)
 
 
@@ -168,7 +170,9 @@ async def analyze_local_folder(request: FolderAnalyzeRequest, background_tasks: 
     if not sources:
         raise HTTPException(status_code=400, detail="No supported source files were found in this folder.")
 
-    project_id = make_stable_project_id(request.folder_name, "Local folder")
+    # Browser folder pickers do not expose absolute paths. Use an opaque ID so
+    # different folders with the same display name never share an index.
+    project_id = request.project_id or uuid.uuid4().hex
     index_update = await asyncio.to_thread(index_project_sources_incremental, project_id, sources, prune_missing=True)
     indexed_chunks = index_update["indexed_chunks"]
     embedding_job = await asyncio.to_thread(create_embedding_job, project_id)
