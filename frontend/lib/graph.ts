@@ -7,16 +7,16 @@ export function getFolderGroup(path: string) {
 
 export function getLanguageStyle(language: string) {
   const styles: Record<string, { border: string; background: string; text: string }> = {
-    py: { border: "#3b82f6", background: "#102039", text: "#93c5fd" },
-    ts: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
-    tsx: { border: "#0ea5e9", background: "#0d2533", text: "#7dd3fc" },
-    js: { border: "#eab308", background: "#29230e", text: "#fde047" },
-    jsx: { border: "#eab308", background: "#29230e", text: "#fde047" },
-    json: { border: "#a78bfa", background: "#211a35", text: "#c4b5fd" },
-    css: { border: "#ec4899", background: "#301629", text: "#f9a8d4" },
-    html: { border: "#f97316", background: "#301d12", text: "#fdba74" },
+    py: { border: "#38bdf8", background: "#102b3b", text: "#7dd3fc" },
+    ts: { border: "#2dd4bf", background: "#102f32", text: "#99f6e4" },
+    tsx: { border: "#2dd4bf", background: "#102f32", text: "#99f6e4" },
+    js: { border: "#fbbf24", background: "#332a13", text: "#fde68a" },
+    jsx: { border: "#fbbf24", background: "#332a13", text: "#fde68a" },
+    json: { border: "#c084fc", background: "#2a1d3b", text: "#d8b4fe" },
+    css: { border: "#f472b6", background: "#351b30", text: "#f9a8d4" },
+    html: { border: "#fb923c", background: "#352216", text: "#fdba74" },
   };
-  return styles[language.toLowerCase()] || { border: "#64748b", background: "#172033", text: "#cbd5e1" };
+  return styles[language.toLowerCase()] || { border: "#94a3b8", background: "#1b2936", text: "#cbd5e1" };
 }
 
 export function getGraphPositions(result: AnalysisResult) {
@@ -61,25 +61,53 @@ export function getGraphPositions(result: AnalysisResult) {
 
   const positions = new Map<string, { x: number; y: number }>();
   let folderTop = 0;
+  const nodeWidth = 250;
+  const nodeHeight = 168;
+  const columnGap = 105;
+  const rowGap = 42;
+  const disconnectedColumns = 5;
+
   folders.forEach((folder) => {
     const files = result.nodes.filter((node) => getFolderGroup(node.path) === folder);
-    const columns = new Map<number, typeof files>();
-    files.forEach((node) => {
+    const connected = files.filter((node) => (degree.get(node.id) || 0) > 0);
+    const disconnected = files
+      .filter((node) => (degree.get(node.id) || 0) === 0)
+      .sort((a, b) => a.path.localeCompare(b.path));
+
+    const columns = new Map<number, typeof connected>();
+    connected.forEach((node) => {
       const column = rank.get(node.id) || 0;
       columns.set(column, [...(columns.get(column) || []), node]);
     });
 
-    let folderRows = 1;
+    let connectedRows = 0;
     columns.forEach((columnFiles, column) => {
       columnFiles.sort((a, b) =>
         (degree.get(b.id) || 0) - (degree.get(a.id) || 0) || a.path.localeCompare(b.path),
       );
-      folderRows = Math.max(folderRows, columnFiles.length);
+      connectedRows = Math.max(connectedRows, columnFiles.length);
       columnFiles.forEach((node, index) => {
-        positions.set(node.id, { x: column * 360, y: folderTop + index * 170 });
+        positions.set(node.id, {
+          x: column * (nodeWidth + columnGap),
+          y: folderTop + index * (nodeHeight + rowGap),
+        });
       });
     });
-    folderTop += folderRows * 170 + 110;
+
+    const maxRank = connected.length ? Math.max(...connected.map((node) => rank.get(node.id) || 0)) : -1;
+    const disconnectedStartX = (maxRank + 1) * (nodeWidth + columnGap) + 90;
+    disconnected.forEach((node, index) => {
+      const column = index % disconnectedColumns;
+      const row = Math.floor(index / disconnectedColumns);
+      positions.set(node.id, {
+        x: disconnectedStartX + column * (nodeWidth + 34),
+        y: folderTop + row * (nodeHeight + 28),
+      });
+    });
+
+    const disconnectedRows = Math.ceil(disconnected.length / disconnectedColumns);
+    const folderRows = Math.max(connectedRows, disconnectedRows, 1);
+    folderTop += folderRows * (nodeHeight + rowGap) + 120;
   });
 
   return positions;
