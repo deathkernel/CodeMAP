@@ -907,7 +907,7 @@ function Explorer() {
                 <button onClick={() => setShowDisconnected((value) => !value)} className={"rounded-lg border px-3 py-2 text-[11px] " + (showDisconnected ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-white/10 text-slate-400")}>{showDisconnected ? "Show all files" : "Inspect disconnected"}</button>
               </div>
               <div className="h-[620px]">
-                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView={{ padding: 0.12, maxZoom: 1.2 }} onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.25} maxZoom={1.5}>
+                <ReactFlow key={`${activeFolder}-${showDisconnected}`} nodes={visibleGraphNodes} edges={visibleGraphEdges} fitView onNodeClick={(_, node) => { void openSource(node.id); }} minZoom={0.25} maxZoom={1.5}>
                   <Background color="#24434a" gap={28} />
                   <MiniMap nodeColor={(node) => String(node.style?.borderColor || "#2dd4bf")} maskColor="rgba(5,12,18,0.78)" />
                   <Controls />
