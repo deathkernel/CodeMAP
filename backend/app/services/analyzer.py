@@ -41,12 +41,20 @@ def _js_imports(source: str) -> list[str]:
 def _resolve_import(source_path: str, imported: str, known_paths: set[str], python: bool = False) -> str | None:
     candidates: list[str] = []
     if imported.startswith("."):
-        level = len(imported) - len(imported.lstrip("."))
-        module_path = imported[level:].lstrip("/").replace(".", "/")
-        base = PurePosixPath(source_path).parent
-        for _ in range(max(0, level - 1)):
-            base = base.parent
-        candidate = (base / module_path).as_posix() if module_path else base.as_posix()
+        if python:
+            level = len(imported) - len(imported.lstrip("."))
+            module_path = imported[level:].replace(".", "/")
+            base = PurePosixPath(source_path).parent
+            for _ in range(max(0, level - 1)):
+                base = base.parent
+            candidate = (base / module_path).as_posix() if module_path else base.as_posix()
+        else:
+            # JavaScript/TypeScript relative specifiers use path segments:
+            # "./x" stays in the current folder; "../x" moves up one folder.
+            import posixpath
+            candidate = posixpath.normpath(
+                posixpath.join(PurePosixPath(source_path).parent.as_posix(), imported)
+            )
         candidates.append(candidate)
     elif python:
         candidates.append(imported.replace(".", "/"))
