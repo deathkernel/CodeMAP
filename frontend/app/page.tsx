@@ -1142,6 +1142,7 @@ function Explorer() {
               <a href="#bugs-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Bug scan</a>
               <a href="#symbols-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Symbols</a>
               <a href="#search-panel" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5">Code search</a>
+              <a href="#all-bugs-panel" className="rounded-lg px-3 py-2 text-rose-200 hover:bg-rose-400/10">All bugs</a>
             </nav>
             <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
             <aside className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1220]">
@@ -1645,6 +1646,48 @@ function Explorer() {
                 {aiError && <p role="alert" className="mt-3 text-xs text-rose-300">{aiError}</p>}
                 {explanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-6 text-slate-300">{explanation}</div>}
               </div>}
+              <section id="all-bugs-panel" className="col-span-full rounded-2xl border border-rose-400/20 bg-rose-400/[0.025] p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-semibold"><Bug size={17} className="text-rose-300" /> All detected bugs</div>
+                    <p className="mt-1 text-xs text-slate-500">Complete list of findings from this scan, across all analyzed files.</p>
+                  </div>
+                  <span className="rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1.5 text-xs font-semibold text-rose-200">{result.bug_findings.length} total findings</span>
+                </div>
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  <Metric label="High severity" value={result.bug_stats.by_severity.high} />
+                  <Metric label="Medium severity" value={result.bug_stats.by_severity.medium} />
+                  <Metric label="Low severity" value={result.bug_stats.by_severity.low} />
+                </div>
+                {result.bug_findings.length ? (
+                  <div className="space-y-3">
+                    {result.bug_findings.map((finding, index) => (
+                      <article key={finding.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span className="mt-0.5 text-[10px] tabular-nums text-slate-600">#{index + 1}</span>
+                            <h3 className="text-sm font-semibold text-slate-100">{finding.title}</h3>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${finding.severity === "high" ? "bg-rose-400/10 text-rose-300" : finding.severity === "medium" ? "bg-amber-400/10 text-amber-300" : "bg-slate-400/10 text-slate-300"}`}>{finding.severity}</span>
+                        </div>
+                        <button onClick={() => { void openSource(finding.path, finding.line); }} className="mt-2 break-all text-left text-[11px] text-cyan-200 hover:text-cyan-100">{finding.path}:{finding.line} · Open source</button>
+                        <p className="mt-2 text-xs leading-5 text-slate-300">{finding.message}</p>
+                        <p className="mt-2 text-xs leading-5 text-slate-500"><span className="font-semibold text-slate-400">Suggested fix:</span> {finding.recommendation}</p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button onClick={() => { void openSource(finding.path, finding.line); }} className="rounded-lg border border-white/10 px-3 py-2 text-[11px] text-slate-300 hover:bg-white/5">Open file</button>
+                          <button disabled={bugAiLoadingId !== null} onClick={() => { void explainBug(finding); }} className="rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-3 py-2 text-[11px] font-semibold text-indigo-200 hover:bg-indigo-500/20 disabled:opacity-50">
+                            {bugAiLoadingId === finding.id ? "Analyzing…" : "Explain with AI"}
+                          </button>
+                        </div>
+                        {bugAiFindingId === finding.id && bugAiLoadingId === finding.id && <p className="mt-2 text-[11px] text-indigo-300">{aiStatus}</p>}
+                        {bugAiFindingId === finding.id && bugAiError && <p role="alert" className="mt-2 text-[11px] text-rose-300">{bugAiError}</p>}
+                        {bugAiFindingId === finding.id && bugAiExplanation && <div className="mt-3 whitespace-pre-wrap rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-3 text-xs leading-5 text-slate-300">{bugAiExplanation}</div>}
+                      </article>
+                    ))}
+                  </div>
+                ) : <p className="rounded-xl border border-emerald-400/15 bg-emerald-400/5 p-4 text-sm text-emerald-200">No bug findings were reported in this scan.</p>}
+                <p className="mt-4 text-[10px] leading-4 text-slate-600">{result.bug_analysis_note}</p>
+              </section>
               <p className="col-span-full text-[11px] leading-5 text-slate-600">{result.analysis_note}</p>
             </aside>
           </div>
